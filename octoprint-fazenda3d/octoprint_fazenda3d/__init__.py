@@ -1,78 +1,138 @@
-# coding=utf-8
+# -*- coding: utf-8 -*-
 from __future__ import absolute_import
-
-### (Don't forget to remove me)
-# This is a basic skeleton for your plugin's __init__.py. You probably want to adjust the class name of your plugin
-# as well as the plugin mixins it's subclassing from. This is really just a basic skeleton to get you started,
-# defining your plugin as a template plugin, settings and asset plugin. Feel free to add or remove mixins
-# as necessary.
-#
-# Take a look at the documentation on what other plugin mixins are available.
-
 import octoprint.plugin
+import octoprint.util
+import requests
+import os
 
-class Octoprint_fazenda3dPlugin(octoprint.plugin.SettingsPlugin,
-    octoprint.plugin.AssetPlugin,
-    octoprint.plugin.TemplatePlugin
-):
+class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
+                      octoprint.plugin.TemplatePlugin,
+                      octoprint.plugin.StartupPlugin):
 
-    ##~~ SettingsPlugin mixin
+    def __init__(self):
+        super(Fazenda3DPlugin, self).__init__()
+        self._timer = None
 
+    ## Chamado após o OctoPrint iniciar
+    def on_after_startup(self):
+        self._logger.info("Fazenda3DPlugin iniciado.")
+        # Inicia timer para envio periódico de status e checagem da fila
+        interval = 5.0  # segundos
+        self._timer = octoprint.util.RepeatedTimer(interval, self._loop_status)
+        self._timer.start()
+
+    ## Configurações padrão do plugin
     def get_settings_defaults(self):
-        return {
-            # put your plugin's default settings here
-        }
+        return dict(
+            servidor_url="",
+            token="",
+            nome_impressora=""
+        )
 
-    ##~~ AssetPlugin mixin
+    ## Variáveis para template
+    def get_template_vars(self):
+        return dict(
+            servidor_url=self._settings.get(["servidor_url"]),
+            token=self._settings.get(["token"]),
+            nome_impressora=self._settings.get(["nome_impressora"])
+        )
 
-    def get_assets(self):
-        # Define your plugin's asset files to automatically include in the
-        # core UI here.
-        return {
-            "js": ["js/octoprint_fazenda3d.js"],
-            "css": ["css/octoprint_fazenda3d.css"],
-            "less": ["less/octoprint_fazenda3d.less"]
-        }
+    ## Configura onde será o painel lateral ou aba
+    def get_template_configs(self):
+        return [
+            dict(type="sidebar", name="Fazenda 3D", template="fazenda3d_tab.jinja2")
+        ]
 
-    ##~~ Softwareupdate hook
+    ## O loop que é executado periodicamente
+    def _loop_status(self):
+        servidor = self._settings.get(["servidor_url"])
+        token = self._settings.get(["token"])
+        nome = self._settings.get(["nome_impressora"])
+        if not servidor or not token:
+            # não configurado ainda
+            return
 
-    def get_update_information(self):
-        # Define the configuration for your plugin to use with the Software Update
-        # Plugin here. See https://docs.octoprint.org/en/main/bundledplugins/softwareupdate.html
-        # for details.
-        return {
-            "octoprint_fazenda3d": {
-                "displayName": "Octoprint_fazenda3d Plugin",
-                "displayVersion": self._plugin_version,
+        # Obter estado da impressora via APIs internas
+        try:
+            state = self._printer.get_state_id()  # ou outro método apropriado
+            temps = self._printer.get_current_temperatures()
+            progress = None
+            try:
+                progress = self._printer.get_current_data()["progress"]["completion"]
+            except Exception:
+                progress = None
 
-                # version check: github repository
-                "type": "github_release",
-                "user": "GuilhermeHMFroes",
-                "repo": "octoprint-fazenda3d",
-                "current": self._plugin_version,
-
-                # update method: pip
-                "pip": "https://github.com/GuilhermeHMFroes/octoprint-fazenda3d/archive/{target_version}.zip",
+            payload = {
+                "token": token,
+                "nome_impressora": nome,
+                "estado": state,
+                "temperaturas": temps,
+                "progresso": progress
             }
-        }
 
+            self._logger.debug(f"Enviando status ao servidor: {payload}")
+            url_status = servidor.rstrip("/") + "/api/status"
+            requests.post(url_status, json=payload, timeout=5)
+        except Exception as e:
+            self._logger.error(f"Erro ao construir ou enviar status: {e}")
 
-# If you want your plugin to be registered within OctoPrint under a different name than what you defined in setup.py
-# ("OctoPrint-PluginSkeleton"), you may define that here. Same goes for the other metadata derived from setup.py that
-# can be overwritten via __plugin_xyz__ control properties. See the documentation for that.
-__plugin_name__ = "Octoprint_fazenda3d Plugin"
+        # Verificar fila
+        try:
+            url_fila = servidor.rstrip("/") + "/api/fila?token=" + token
+            resp = requests.get(url_fila, timeout=5)
+            if resp.status_code == 200:
+                obj = resp.json()
+                if obj.get("novo_arquivo"):
+                    arquivo_url = obj.get("arquivo_url")
+                    if arquivo_url:
+                        self._logger.info(f"Novo arquivo detectado na fila: {arquivo_url}")
+                        self._baixar_e_imprimir(arquivo_url)
+        except Exception as e:
+            self._logger.error(f"Erro ao checar fila: {e}")
 
+    ## Baixar o G-code e disparar impressão
+    def _baixar_e_imprimir(self, arquivo_url):
+        servidor = self._settings.get(["servidor_url"])
+        token = self._settings.get(["token"])
+        nome = self._settings.get(["nome_impressora"])
 
-# Set the Python version your plugin is compatible with below. Recommended is Python 3 only for all new plugins.
-# OctoPrint 1.4.0 - 1.7.x run under both Python 3 and the end-of-life Python 2.
-# OctoPrint 1.8.0 onwards only supports Python 3.
-__plugin_pythoncompat__ = ">=3,<4"  # Only Python 3
+        try:
+            r = requests.get(arquivo_url, timeout=10)
+            if r.status_code == 200:
+                arquivo_bytes = r.content
+                # Definir local temporário para salvar
+                folder = self._settings.global_get(["server", "uploads"])  # ou outro caminho
+                if not folder:
+                    # fallback se não existir
+                    folder = os.path.join(os.path.dirname(__file__), "temp_uploads")
+                os.makedirs(folder, exist_ok=True)
+                filename = os.path.basename(arquivo_url)
+                caminho_local = os.path.join(folder, filename)
+                with open(caminho_local, "wb") as f:
+                    f.write(arquivo_bytes)
+                self._logger.info(f"Arquivo {filename} baixado com sucesso.")
 
-def __plugin_load__():
-    global __plugin_implementation__
-    __plugin_implementation__ = Octoprint_fazenda3dPlugin()
+                # Selecionar o arquivo no OctoPrint e mandar imprimir
+                # Note: usar API interna para selecionar arquivo
+                # Caminho local pode precisar ser importado para pasta de arquivos do OctoPrint local
+                # Um jeito é mover esse arquivo para pasta de arquivos “local” do OctoPrint, ou usar upload via API
 
-    global __plugin_hooks__
-    __plugin_hooks__ = {
-        "octoprint.plugin.softwareupdate.check_config": __plugin_implementation__.get_update_information
-    }
+                # Exemplo usando API REST interna:
+                relpath = os.path.join("temp_uploads", filename)  # ajustar conforme sua configuração
+                self._printer.select_file(relpath, False, printAfterSelect=True)
+                self._logger.info(f"Iniciando impressão do arquivo {filename}.")
+            else:
+                self._logger.error(f"Erro ao baixar o arquivo: código {r.status_code}")
+        except Exception as e:
+            self._logger.error(f"Erro no processo de baixar e imprimir: {e}")
+
+    ## Limpar timer se o plugin for encerrado
+    def on_shutdown(self):
+        if self._timer:
+            self._timer.cancel()
+
+__plugin_name__ = "Fazenda3D"
+__plugin_version__ = "0.1.0"
+__plugin_description__ = "Plugin que integra o OctoPrint com sistema central de fazenda 3D"
+__plugin_pythoncompat__ = ">=3.7,<4"
+__plugin_implementation__ = Fazenda3DPlugin()
