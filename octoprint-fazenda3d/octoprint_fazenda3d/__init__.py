@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
+import os
+import requests
 import octoprint.plugin
 import octoprint.util
-import requests
-import os
+
 
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
@@ -13,15 +14,15 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         super(Fazenda3DPlugin, self).__init__()
         self._timer = None
 
-    ## Chamado após o OctoPrint iniciar
+    # Chamado após o OctoPrint iniciar
     def on_after_startup(self):
         self._logger.info("Fazenda3DPlugin iniciado.")
-        # Inicia timer para envio periódico de status e checagem da fila
+        # Timer para envio periódico de status e checagem da fila
         interval = 5.0  # segundos
         self._timer = octoprint.util.RepeatedTimer(interval, self._loop_status)
         self._timer.start()
 
-    ## Configurações padrão do plugin
+    # Configurações padrão do plugin
     def get_settings_defaults(self):
         return dict(
             servidor_url="",
@@ -29,7 +30,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             nome_impressora=""
         )
 
-    ## Variáveis para template
+    # Variáveis passadas ao template
     def get_template_vars(self):
         return dict(
             servidor_url=self._settings.get(["servidor_url"]),
@@ -37,26 +38,27 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             nome_impressora=self._settings.get(["nome_impressora"])
         )
 
-    ## Configura onde será o painel lateral ou aba
+    # Define onde aparece o painel: aba (tab) ou sidebar
     def get_template_configs(self):
         return [
-            dict(type="sidebar", name="Fazenda 3D", template="fazenda3d_tab.jinja2")
+            dict(type="tab", name="Fazenda 3D", template="fazenda3d_tab.jinja2")
+            # se preferir lateral: dict(type="sidebar", name="Fazenda 3D", template="fazenda3d_tab.jinja2")
         ]
 
-    ## O loop que é executado periodicamente
+    # Loop periódico para enviar status e checar fila
     def _loop_status(self):
         servidor = self._settings.get(["servidor_url"])
         token = self._settings.get(["token"])
         nome = self._settings.get(["nome_impressora"])
+
         if not servidor or not token:
             # não configurado ainda
             return
 
-        # Obter estado da impressora via APIs internas
         try:
-            state = self._printer.get_state_id()  # ou outro método apropriado
+            state = self._printer.get_state_id()
             temps = self._printer.get_current_temperatures()
-            progress = None
+
             try:
                 progress = self._printer.get_current_data()["progress"]["completion"]
             except Exception:
@@ -90,35 +92,27 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         except Exception as e:
             self._logger.error(f"Erro ao checar fila: {e}")
 
-    ## Baixar o G-code e disparar impressão
+    # Baixar o G-code e disparar impressão
     def _baixar_e_imprimir(self, arquivo_url):
-        servidor = self._settings.get(["servidor_url"])
-        token = self._settings.get(["token"])
-        nome = self._settings.get(["nome_impressora"])
-
         try:
             r = requests.get(arquivo_url, timeout=10)
             if r.status_code == 200:
                 arquivo_bytes = r.content
-                # Definir local temporário para salvar
-                folder = self._settings.global_get(["server", "uploads"])  # ou outro caminho
+
+                folder = self._settings.global_get(["server", "uploads"])
                 if not folder:
-                    # fallback se não existir
                     folder = os.path.join(os.path.dirname(__file__), "temp_uploads")
+
                 os.makedirs(folder, exist_ok=True)
                 filename = os.path.basename(arquivo_url)
                 caminho_local = os.path.join(folder, filename)
+
                 with open(caminho_local, "wb") as f:
                     f.write(arquivo_bytes)
                 self._logger.info(f"Arquivo {filename} baixado com sucesso.")
 
-                # Selecionar o arquivo no OctoPrint e mandar imprimir
-                # Note: usar API interna para selecionar arquivo
-                # Caminho local pode precisar ser importado para pasta de arquivos do OctoPrint local
-                # Um jeito é mover esse arquivo para pasta de arquivos “local” do OctoPrint, ou usar upload via API
-
-                # Exemplo usando API REST interna:
-                relpath = os.path.join("temp_uploads", filename)  # ajustar conforme sua configuração
+                # Selecionar o arquivo e mandar imprimir
+                relpath = os.path.join("temp_uploads", filename)
                 self._printer.select_file(relpath, False, printAfterSelect=True)
                 self._logger.info(f"Iniciando impressão do arquivo {filename}.")
             else:
@@ -126,12 +120,13 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         except Exception as e:
             self._logger.error(f"Erro no processo de baixar e imprimir: {e}")
 
-    ## Limpar timer se o plugin for encerrado
+    # Limpar timer se o plugin for encerrado
     def on_shutdown(self):
         if self._timer:
             self._timer.cancel()
 
-__plugin_name__ = "Fazenda3D"
+
+__plugin_name__ = "Fazenda 3D"
 __plugin_version__ = "0.1.0"
 __plugin_description__ = "Plugin que integra o OctoPrint com sistema central de fazenda 3D"
 __plugin_pythoncompat__ = ">=3.7,<4"

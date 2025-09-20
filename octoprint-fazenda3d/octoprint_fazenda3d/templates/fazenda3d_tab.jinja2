@@ -1,0 +1,30 @@
+<div class="container">
+  <h3>Configuração do Servidor da Fazenda 3D</h3>
+  <form class="form-horizontal">
+    <div class="control-group">
+      <label class="control-label">URL do Servidor</label>
+      <div class="controls">
+        <input type="text" class="input-block-level" data-bind="value: settings.plugins.fazenda3d.server_url">
+      </div>
+    </div>
+    <div class="control-group">
+      <label class="control-label">Token</label>
+      <div class="controls">
+        <input type="text" class="input-block-level" data-bind="value: settings.plugins.fazenda3d.auth_token">
+      </div>
+    </div>
+    <div class="control-group">
+      <label class="control-label">Nome da Impressora</label>
+      <div class="controls">
+        <input type="text" class="input-block-level" data-bind="value: settings.plugins.fazenda3d.printer_name">
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="fazenda3d-panel">
+  <h3>Plugin Fazenda 3D</h3>
+  <p>URL servidor: {{ servidor_url }}</p>
+  <p>Token: {{ token }}</p>
+  <p>Nome impressora: {{ nome_impressora }}</p>
+</div>
