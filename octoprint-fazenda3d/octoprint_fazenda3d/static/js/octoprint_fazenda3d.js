@@ -1,14 +1,12 @@
-/*
- * ViewModel para o Plugin Fazenda3D
- */
 $(function() {
     function Fazenda3DViewModel(parameters) {
         var self = this;
 
-        // Pegamos o settingsViewModel (primeiro parâmetro)
         self.settingsViewModel = parameters[0];
 
-        // Função chamada pelo botão
+        // Observável para status da conexão
+        self.connectionStatus = ko.observable("Desconectado");
+
         self.connectToServer = function() {
             var url = self.settingsViewModel.settings.plugins.fazenda3d.servidor_url();
             var token = self.settingsViewModel.settings.plugins.fazenda3d.token();
@@ -18,6 +16,8 @@ $(function() {
                 alert("Preencha URL e Token primeiro.");
                 return;
             }
+
+            self.connectionStatus("Conectando…");
 
             $.ajax({
                 type: "POST",
@@ -29,19 +29,41 @@ $(function() {
                     ip: location.hostname
                 }),
                 success: function(resp) {
+                    self.connectionStatus("Conectado");
                     alert("Impressora registrada com sucesso!");
                 },
                 error: function() {
+                    self.connectionStatus("Erro na conexão");
                     alert("Erro ao conectar ao servidor.");
                 }
             });
         };
+
+        // opcional: checar status periodicamente
+        self.checkStatus = function() {
+            var url = self.settingsViewModel.settings.plugins.fazenda3d.servidor_url();
+            var token = self.settingsViewModel.settings.plugins.fazenda3d.token();
+            if (!url || !token) return;
+
+            $.ajax({
+                url: url.replace(/\/$/, "") + "/api/printers",
+                type: "GET",
+                success: function() {
+                    self.connectionStatus("Conectado");
+                },
+                error: function() {
+                    self.connectionStatus("Desconectado");
+                }
+            });
+        };
+
+        // Checa status a cada 10 s
+        setInterval(self.checkStatus, 10000);
     }
 
-    // registra o viewmodel com dependência de settingsViewModel
     OCTOPRINT_VIEWMODELS.push({
         construct: Fazenda3DViewModel,
         dependencies: ["settingsViewModel"],
-        elements: ["#tab_plugin_fazenda3d"] // id da aba/tab
+        elements: ["#tab_plugin_fazenda3d"]
     });
 });
