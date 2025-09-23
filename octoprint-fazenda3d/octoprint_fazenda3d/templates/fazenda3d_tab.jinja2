@@ -1,45 +1,24 @@
-<div class="container">
+<div id="tab_plugin_fazenda3d" class="container">
   <h3>Configuração do Servidor da Fazenda 3D</h3>
 
-  <form class="form-horizontal">
-    <div class="control-group">
-      <label class="control-label">URL do Servidor</label>
-      <div class="controls">
-        <input type="text" class="input-block-level"
-               data-bind="value: settingsViewModel.settings.plugins.fazenda3d.servidor_url">
-      </div>
-    </div>
+  <div class="control-group">
+    <label>URL do Servidor</label>
+    <input type="text" class="input-block-level" data-bind="value: servidor_url">
+  </div>
 
-    <div class="control-group">
-      <label class="control-label">Token</label>
-      <div class="controls">
-        <input type="text" class="input-block-level"
-               data-bind="value: settingsViewModel.settings.plugins.fazenda3d.token">
-      </div>
-    </div>
+  <div class="control-group">
+    <label>Token</label>
+    <input type="text" class="input-block-level" data-bind="value: token">
+  </div>
 
-    <div class="control-group">
-      <label class="control-label">Nome da Impressora</label>
-      <div class="controls">
-        <input type="text" class="input-block-level"
-               data-bind="value: settingsViewModel.settings.plugins.fazenda3d.nome_impressora">
-      </div>
-    </div>
-  </form>
+  <div class="control-group">
+    <label>Nome da Impressora</label>
+    <input type="text" class="input-block-level" data-bind="value: nome_impressora">
+  </div>
 
   <button class="btn btn-primary" data-bind="click: connectToServer">
     Conectar ao Servidor
   </button>
 
-  <p style="margin-top:10px;">
-    <strong>Status da conexão:</strong>
-    <span data-bind="text: connectionStatus"></span>
-  </p>
-</div>
-
-<div class="fazenda3d-panel">
-  <h3>Plugin Fazenda 3D</h3>
-  <p>URL servidor: {{ servidor_url }}</p>
-  <p>Token: {{ token }}</p>
-  <p>Nome impressora: {{ nome_impressora }}</p>
+  <p>Status: <span data-bind="text: connectionStatus"></span></p>
 </div>

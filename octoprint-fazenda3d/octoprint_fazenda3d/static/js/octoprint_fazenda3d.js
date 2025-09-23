@@ -2,65 +2,60 @@ $(function() {
     function Fazenda3DViewModel(parameters) {
         var self = this;
 
+        // acessa settingsViewModel para carregar dados salvos
         self.settingsViewModel = parameters[0];
 
-        // Observável para status da conexão
+        // observables ligadas ao template Jinja2
+        self.servidor_url = ko.observable();
+        self.token = ko.observable();
+        self.nome_impressora = ko.observable();
+
+        // status de conexão
         self.connectionStatus = ko.observable("Desconectado");
 
+        // Ao inicializar o viewmodel, carrega valores já salvos
+        self.onBeforeBinding = function() {
+            self.servidor_url(self.settingsViewModel.settings.plugins.fazenda3d.servidor_url());
+            self.token(self.settingsViewModel.settings.plugins.fazenda3d.token());
+            self.nome_impressora(self.settingsViewModel.settings.plugins.fazenda3d.nome_impressora());
+        };
+
+        // Botão para testar conexão com o servidor
         self.connectToServer = function() {
-            var url = self.settingsViewModel.settings.plugins.fazenda3d.servidor_url();
-            var token = self.settingsViewModel.settings.plugins.fazenda3d.token();
-            var nome = self.settingsViewModel.settings.plugins.fazenda3d.nome_impressora();
+            var url = self.servidor_url();
+            var token = self.token();
+            var nome = self.nome_impressora();
 
             if (!url || !token) {
-                alert("Preencha URL e Token primeiro.");
+                self.connectionStatus("Preencha URL e Token");
                 return;
             }
 
-            self.connectionStatus("Conectando…");
-
+            self.connectionStatus("Conectando...");
             $.ajax({
+                url: url.replace(/\/$/, "") + "/api/status",
                 type: "POST",
-                url: url.replace(/\/$/, "") + "/api/register_printer",
-                contentType: "application/json",
                 data: JSON.stringify({
                     token: token,
-                    nome_impressora: nome,
-                    ip: location.hostname
+                    nome_impressora: nome || "Impressora sem nome",
+                    estado: "operational"
                 }),
+                contentType: "application/json",
                 success: function(resp) {
-                    self.connectionStatus("Conectado");
-                    alert("Impressora registrada com sucesso!");
+                    if (resp.success) {
+                        self.connectionStatus("Conectado com sucesso!");
+                    } else {
+                        self.connectionStatus("Falha: " + (resp.message || "Erro"));
+                    }
                 },
                 error: function() {
-                    self.connectionStatus("Erro na conexão");
-                    alert("Erro ao conectar ao servidor.");
+                    self.connectionStatus("Erro ao conectar");
                 }
             });
         };
-
-        // opcional: checar status periodicamente
-        self.checkStatus = function() {
-            var url = self.settingsViewModel.settings.plugins.fazenda3d.servidor_url();
-            var token = self.settingsViewModel.settings.plugins.fazenda3d.token();
-            if (!url || !token) return;
-
-            $.ajax({
-                url: url.replace(/\/$/, "") + "/api/printers",
-                type: "GET",
-                success: function() {
-                    self.connectionStatus("Conectado");
-                },
-                error: function() {
-                    self.connectionStatus("Desconectado");
-                }
-            });
-        };
-
-        // Checa status a cada 10 s
-        setInterval(self.checkStatus, 10000);
     }
 
+    // registra o viewmodel no OctoPrint
     OCTOPRINT_VIEWMODELS.push({
         construct: Fazenda3DViewModel,
         dependencies: ["settingsViewModel"],
