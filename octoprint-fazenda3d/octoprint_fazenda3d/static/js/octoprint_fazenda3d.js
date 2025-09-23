@@ -20,8 +20,50 @@ $(function() {
             self.nome_impressora(self.settingsViewModel.settings.plugins.fazenda3d.nome_impressora());
         };
 
+        // salva imediatamente no OctoPrint
+        self.settingsViewModel.saveData();
+
         // Botão para testar conexão com o servidor
+        /*self.connectToServer = function() {
+            var url = self.servidor_url();
+            var token = self.token();
+            var nome = self.nome_impressora();
+
+            if (!url || !token) {
+                self.connectionStatus("Preencha URL e Token");
+                return;
+            }
+
+            self.connectionStatus("Conectando...");
+            $.ajax({
+                url: url.replace(/\/$/, "") + "/api/status",
+                type: "POST",
+                data: JSON.stringify({
+                    token: token,
+                    nome_impressora: nome || "Impressora sem nome",
+                    estado: "operational"
+                }),
+                contentType: "application/json",
+                success: function(resp) {
+                    if (resp.success) {
+                        self.connectionStatus("Conectado com sucesso!");
+                    } else {
+                        self.connectionStatus("Falha: " + (resp.message || "Erro"));
+                    }
+                },
+                error: function() {
+                    self.connectionStatus("Erro ao conectar");
+                }
+            });
+        };*/
+
         self.connectToServer = function() {
+            // grava no settings do OctoPrint
+            self.settingsViewModel.settings.plugins.fazenda3d.servidor_url(self.servidor_url());
+            self.settingsViewModel.settings.plugins.fazenda3d.token(self.token());
+            self.settingsViewModel.settings.plugins.fazenda3d.nome_impressora(self.nome_impressora());
+            self.settingsViewModel.saveData();
+
             var url = self.servidor_url();
             var token = self.token();
             var nome = self.nome_impressora();
@@ -53,6 +95,7 @@ $(function() {
                 }
             });
         };
+
     }
 
     // registra o viewmodel no OctoPrint
