@@ -59,7 +59,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         token = self._settings.get(["token"])
         nome = self._settings.get(["nome_impressora"])
 
-        self._logger.info("Entrou no loop. token: {}").format(token)
+        self._logger.info("Entrou no loop. token: %s", token)
 
         if not servidor or not token:
             # não configurado ainda
