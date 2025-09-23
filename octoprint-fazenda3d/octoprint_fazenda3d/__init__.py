@@ -59,6 +59,8 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         token = self._settings.get(["token"])
         nome = self._settings.get(["nome_impressora"])
 
+        self._logger.info(servidor, token, nome)
+
         if not servidor or not token:
             # não configurado ainda
             return
