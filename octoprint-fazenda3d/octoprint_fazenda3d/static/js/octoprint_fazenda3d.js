@@ -2,41 +2,40 @@ $(function() {
     function Fazenda3DViewModel(parameters) {
         var self = this;
 
-        self.settingsViewModel = parameters[0];
-
         self.servidor_url = ko.observable();
         self.token = ko.observable();
         self.nome_impressora = ko.observable();
-
         self.connectionStatus = ko.observable("Desconectado");
 
-        self.onBeforeBinding = function() {
-            self.servidor_url(self.settingsViewModel.settings.plugins.fazenda3d.servidor_url());
-            self.token(self.settingsViewModel.settings.plugins.fazenda3d.token());
-            self.nome_impressora(self.settingsViewModel.settings.plugins.fazenda3d.nome_impressora());
-        };
-
         self.connectToServer = function() {
-            var url = self.servidor_url();
-            var token = self.token();
-            var nome = self.nome_impressora();
+            const dados = {
+                command: "connect", // obrigatório!
+                servidor_url: self.servidor_url(),
+                token: self.token(),
+                nome_impressora: self.nome_impressora()
+            };
 
-            console.log("Enviando para Python:", url, token, nome);
+            console.log("Enviando fetch para /api/plugin/fazenda3d", dados);
 
-            // Envia direto para o Python via SimpleApiPlugin
-            OctoPrint.simpleApiCommand("fazenda3d", "connect", {
-                servidor_url: url,
-                token: token,
-                nome_impressora: nome
-            }).done(function(resp) {
-                console.log("Resposta Python", resp);
+            fetch(API_BASEURL + "plugin/fazenda3d", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Api-Key": UI_API_KEY // o OctoPrint injeta isso na página
+                },
+                body: JSON.stringify(dados)
+            })
+            .then(r => r.json())
+            .then(resp => {
+                console.log("Resposta do plugin", resp);
                 if (resp.success) {
-                    self.connectionStatus("Conectado ao servidor!");
+                    self.connectionStatus("Conectado com sucesso!");
                 } else {
                     self.connectionStatus("Falha: " + (resp.message || "Erro"));
                 }
-            }).fail(function(err) {
-                console.error("Erro API plugin", err);
+            })
+            .catch(err => {
+                console.error("Erro ao chamar plugin", err);
                 self.connectionStatus("Erro ao enviar dados ao plugin");
             });
         };
