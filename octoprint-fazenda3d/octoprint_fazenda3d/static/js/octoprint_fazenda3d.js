@@ -8,26 +8,32 @@ $(function() {
         self.connectionStatus = ko.observable("Desconectado");
 
         self.connectToServer = function() {
+            // monta objeto
             const dados = {
-                command: "connect", // obrigatório!
+                command: "connect",
                 servidor_url: self.servidor_url(),
                 token: self.token(),
                 nome_impressora: self.nome_impressora()
             };
 
-            console.log("Enviando fetch para /api/plugin/fazenda3d", dados);
+            // loga no console tudo que vai ser enviado
+            console.log("=== Clique no botão Conectar ao Servidor ===");
+            console.log("Servidor URL digitado:", self.servidor_url());
+            console.log("Token digitado:", self.token());
+            console.log("Nome digitado:", self.nome_impressora());
+            console.log("Payload que será enviado:", dados);
 
             fetch(API_BASEURL + "plugin/fazenda3d", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "X-Api-Key": UI_API_KEY // o OctoPrint injeta isso na página
+                    "X-Api-Key": UI_API_KEY
                 },
                 body: JSON.stringify(dados)
             })
             .then(r => r.json())
             .then(resp => {
-                console.log("Resposta do plugin", resp);
+                console.log("Resposta do plugin:", resp);
                 if (resp.success) {
                     self.connectionStatus("Conectado com sucesso!");
                 } else {
@@ -35,7 +41,7 @@ $(function() {
                 }
             })
             .catch(err => {
-                console.error("Erro ao chamar plugin", err);
+                console.error("Erro ao chamar plugin:", err);
                 self.connectionStatus("Erro ao enviar dados ao plugin");
             });
         };
