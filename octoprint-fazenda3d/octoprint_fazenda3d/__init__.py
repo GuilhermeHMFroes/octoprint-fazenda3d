@@ -52,6 +52,9 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
     # Loop periódico para enviar status e checar fila
     def _loop_status(self):
+
+        self._logger.info("Entrou no _loop_status")
+
         servidor = self._settings.get(["servidor_url"])
         token = self._settings.get(["token"])
         nome = self._settings.get(["nome_impressora"])
