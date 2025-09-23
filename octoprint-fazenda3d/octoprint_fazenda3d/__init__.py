@@ -44,6 +44,11 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             dict(type="tab", name="Fazenda 3D", template="fazenda3d_tab.jinja2")
             # se preferir lateral: dict(type="sidebar", name="Fazenda 3D", template="fazenda3d_tab.jinja2")
         ]
+    
+    def get_assets(self):
+        return dict(
+            js=["js/fazenda3d.js"]
+        )
 
     # Loop periódico para enviar status e checar fila
     def _loop_status(self):
@@ -124,6 +129,8 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
     def on_shutdown(self):
         if self._timer:
             self._timer.cancel()
+
+    
 
 
 __plugin_name__ = "Fazenda 3D"

@@ -6,7 +6,7 @@
       <label class="control-label">URL do Servidor</label>
       <div class="controls">
         <input type="text" class="input-block-level"
-               data-bind="value: settings.plugins.fazenda3d.servidor_url">
+               data-bind="value: settingsViewModel.settings.plugins.fazenda3d.servidor_url">
       </div>
     </div>
 
@@ -14,7 +14,7 @@
       <label class="control-label">Token</label>
       <div class="controls">
         <input type="text" class="input-block-level"
-               data-bind="value: settings.plugins.fazenda3d.token">
+               data-bind="value: settingsViewModel.settings.plugins.fazenda3d.token">
       </div>
     </div>
 
@@ -22,12 +22,14 @@
       <label class="control-label">Nome da Impressora</label>
       <div class="controls">
         <input type="text" class="input-block-level"
-               data-bind="value: settings.plugins.fazenda3d.nome_impressora">
+               data-bind="value: settingsViewModel.settings.plugins.fazenda3d.nome_impressora">
       </div>
     </div>
   </form>
 
-  <button class="btn btn-primary" id="btnConectar">Conectar ao Servidor</button>
+  <button class="btn btn-primary" data-bind="click: connectToServer">
+    Conectar ao Servidor
+  </button>
 </div>
 
 <div class="fazenda3d-panel">
@@ -35,27 +37,4 @@
   <p>URL servidor: {{ servidor_url }}</p>
   <p>Token: {{ token }}</p>
   <p>Nome impressora: {{ nome_impressora }}</p>
-  <p>Status de conexão:</p>
 </div>
-
-<script type="text/javascript">
-  $(function() {
-    $("#btnConectar").on("click", function() {
-      const url = self.settings.settings.plugins.fazenda3d.servidor_url();
-      const token = self.settings.settings.plugins.fazenda3d.token();
-      const nome = self.settings.settings.plugins.fazenda3d.nome_impressora();
-      if (!url || !token) {
-        alert("Preencha URL e Token primeiro.");
-        return;
-      }
-      $.ajax({
-        type: "POST",
-        url: url.replace(/\/$/, "") + "/api/register_printer",
-        contentType: "application/json",
-        data: JSON.stringify({ token: token, nome_impressora: nome, ip: location.hostname }),
-        success: function() { alert("Impressora registrada com sucesso!"); },
-        error: function() { alert("Erro ao conectar ao servidor."); }
-      });
-    });
-  });
-</script>

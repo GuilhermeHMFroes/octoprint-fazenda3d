@@ -1,29 +1,47 @@
 /*
- * View model for OctoPrint-Fazenda3D
- *
- * Author: Guilhemre Froes
- * License: AGPL-3.0
+ * ViewModel para o Plugin Fazenda3D
  */
 $(function() {
-    function Octoprint_fazenda3dViewModel(parameters) {
+    function Fazenda3DViewModel(parameters) {
         var self = this;
 
-        // assign the injected parameters, e.g.:
-        // self.loginStateViewModel = parameters[0];
-        // self.settingsViewModel = parameters[1];
+        // Pegamos o settingsViewModel (primeiro parâmetro)
+        self.settingsViewModel = parameters[0];
 
-        // TODO: Implement your plugin's view model here.
+        // Função chamada pelo botão
+        self.connectToServer = function() {
+            var url = self.settingsViewModel.settings.plugins.fazenda3d.servidor_url();
+            var token = self.settingsViewModel.settings.plugins.fazenda3d.token();
+            var nome = self.settingsViewModel.settings.plugins.fazenda3d.nome_impressora();
+
+            if (!url || !token) {
+                alert("Preencha URL e Token primeiro.");
+                return;
+            }
+
+            $.ajax({
+                type: "POST",
+                url: url.replace(/\/$/, "") + "/api/register_printer",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    token: token,
+                    nome_impressora: nome,
+                    ip: location.hostname
+                }),
+                success: function(resp) {
+                    alert("Impressora registrada com sucesso!");
+                },
+                error: function() {
+                    alert("Erro ao conectar ao servidor.");
+                }
+            });
+        };
     }
 
-    /* view model class, parameters for constructor, container to bind to
-     * Please see http://docs.octoprint.org/en/main/plugins/viewmodels.html#registering-custom-viewmodels for more details
-     * and a full list of the available options.
-     */
+    // registra o viewmodel com dependência de settingsViewModel
     OCTOPRINT_VIEWMODELS.push({
-        construct: Octoprint_fazenda3dViewModel,
-        // ViewModels your plugin depends on, e.g. loginStateViewModel, settingsViewModel, ...
-        dependencies: [ /* "loginStateViewModel", "settingsViewModel" */ ],
-        // Elements to bind to, e.g. #settings_plugin_octoprint_fazenda3d, #tab_plugin_octoprint_fazenda3d, ...
-        elements: [ /* ... */ ]
+        construct: Fazenda3DViewModel,
+        dependencies: ["settingsViewModel"],
+        elements: ["#tab_plugin_fazenda3d"] // id da aba/tab
     });
 });
