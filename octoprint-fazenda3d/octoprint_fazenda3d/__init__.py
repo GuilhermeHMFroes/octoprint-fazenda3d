@@ -33,7 +33,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         return dict(
             servidor_url=self._settings.get(["servidor_url"]),
             token=self._settings.get(["token"]),
-            nome_impressora=self._settings.get(["nome_impressora"])
+            nome_impressora=self._settings.get(["nome_impressora"]),
             plugin_version=self._plugin_version
         )
 
