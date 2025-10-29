@@ -25,15 +25,13 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
     def get_settings_defaults(self):
         return dict(
             servidor_url="",
-            token="",
-            nome_impressora=""
+            token=""
         )
 
     def get_template_vars(self):
         return dict(
             servidor_url=self._settings.get(["servidor_url"]),
             token=self._settings.get(["token"]),
-            nome_impressora=self._settings.get(["nome_impressora"])
         )
 
     def get_template_configs(self):
@@ -43,7 +41,11 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
     def get_assets(self):
         # Este nome de ficheiro DEVE estar correto
-        return dict(js=["static/js/octoprint_fazenda3d.js"])
+        return[
+            #dict(js=["static/js/octoprint_fazenda3d.js"])
+            dict(js=["js/fazenda3d.js"])
+
+        ] 
 
     # ======== SimpleApiPlugin ========
     
