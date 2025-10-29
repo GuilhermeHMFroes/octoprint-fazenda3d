@@ -5,6 +5,7 @@ import requests
 import flask
 import octoprint.plugin
 import octoprint.util
+from flask import jsonify
 
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
@@ -50,34 +51,47 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
     def on_api_command(self, command, data):
         if command == "connect":
-            servidor = data.get("servidor_url")
-            token = data.get("token")
-            nome = data.get("nome_impressora")
+            server_url = data.get("server_url")
+            api_key = data.get("api_key")
 
-            # Log no terminal do OctoPrint
-            self._logger.info(f"Recebi do front: servidor={servidor}, token={token}, nome={nome}")
+            if not server_url or not api_key:
+                return jsonify(success=False, error="URL ou API Key não fornecidos")
 
-            # Atualiza settings do plugin
-            self._settings.set(["servidor_url"], servidor)
-            self._settings.set(["token"], token)
-            self._settings.set(["nome_impressora"], nome)
-            self._settings.save()
-
-            # Opcional: testar conexão agora
+            # --- ADICIONE O TRY...EXCEPT AQUI ---
             try:
-                url_status = servidor.rstrip("/") + "/api/status"
-                resp = requests.post(url_status, json={
-                    "token": token,
-                    "nome_impressora": nome or "Impressora sem nome",
-                    "estado": "operational"
-                }, timeout=5)
-                if resp.status_code == 200 and resp.json().get("success"):
-                    return flask.jsonify(success=True, message="Conectado com sucesso")
+                # Log para sabermos que ele está tentando
+                self._logger.info(f"Fazenda3D: Tentando conectar em: {server_url}")
+
+                response = requests.post(
+                    f"{server_url}/api/printer/connect",
+                    json={"api_key": api_key, "status": "idle"},
+                    timeout=10  # Boa prática: adicione um timeout de 10 segundos
+                )
+
+                # Verifique se o servidor principal respondeu com sucesso
+                if response.status_code == 200:
+                    self._logger.info("Fazenda3D: Conectado ao servidor com sucesso.")
+                    return jsonify(success=True, status="connected")
                 else:
-                    return flask.jsonify(success=False, message="Falha ao conectar")
-            except Exception as e:
-                self._logger.error(f"Erro ao testar conexão: {e}")
-                return flask.jsonify(success=False, message="Erro ao testar conexão")
+                    # O servidor respondeu, mas com um erro (ex: 401, 404, 500)
+                    self._logger.warning(f"Fazenda3D: Falha ao conectar. Servidor respondeu com status {response.status_code}. Body: {response.text}")
+                    return jsonify(success=False, error=f"Servidor respondeu com erro {response.status_code}")
+
+            except requests.exceptions.ConnectionError as e:
+                # Erro: Não conseguiu nem chegar no servidor (offline, recusou, etc.)
+                self._logger.error(f"Fazenda3D: Erro de conexão ao tentar contatar {server_url}. Erro: {e}")
+                return jsonify(success=False, error=f"Não foi possível conectar ao servidor (ConnectionError)")
+            
+            except requests.exceptions.Timeout as e:
+                # Erro: Demorou demais para responder
+                self._logger.error(f"Fazenda3D: Timeout ao tentar contatar {server_url}. Erro: {e}")
+                return jsonify(success=False, error="Servidor demorou para responder (Timeout)")
+
+            except requests.exceptions.RequestException as e:
+                # Outro erro genérico da biblioteca requests (ex: URL mal formada)
+                self._logger.error(f"Fazenda3D: Erro de 'requests' ao tentar contatar {server_url}. Erro: {e}")
+                return jsonify(success=False, error=f"Erro na requisição: {e}")
+            # --- FIM DO BLOCO TRY...EXCEPT ---
 
     # ======== Loop periódico ========
     def _loop_status(self):
