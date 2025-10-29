@@ -57,41 +57,50 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             if not server_url or not api_key:
                 return jsonify(success=False, error="URL ou API Key não fornecidos")
 
-            # --- ADICIONE O TRY...EXCEPT AQUI ---
+            # --- INÍCIO DO BLOCO DE CORREÇÃO ---
             try:
-                # Log para sabermos que ele está tentando
+                # Esta é a linha de log que eu esperava ver
                 self._logger.info(f"Fazenda3D: Tentando conectar em: {server_url}")
 
                 response = requests.post(
                     f"{server_url}/api/printer/connect",
                     json={"api_key": api_key, "status": "idle"},
-                    timeout=10  # Boa prática: adicione um timeout de 10 segundos
+                    timeout=10  # Adiciona um timeout de 10 segundos
                 )
 
-                # Verifique se o servidor principal respondeu com sucesso
+                # Se o servidor respondeu com sucesso (200 OK)
                 if response.status_code == 200:
                     self._logger.info("Fazenda3D: Conectado ao servidor com sucesso.")
+                    
+                    # ------
+                    # PROBLEMA 2: VAMOS GUARDAR AS CONFIGURAÇÕES PARA O LOOP USAR
+                    self._settings.set(["server_url"], server_url)
+                    self._settings.set(["api_key"], api_key)
+                    self._settings.save()
+                    self._logger.info("Fazenda3D: Configurações salvas.")
+                    # ------
+
                     return jsonify(success=True, status="connected")
                 else:
-                    # O servidor respondeu, mas com um erro (ex: 401, 404, 500)
-                    self._logger.warning(f"Fazenda3D: Falha ao conectar. Servidor respondeu com status {response.status_code}. Body: {response.text}")
+                    # Se o servidor respondeu com um erro (404, 500, etc.)
+                    self._logger.warning(f"Fazenda3D: Falha. Servidor respondeu com status {response.status_code}. Body: {response.text}")
                     return jsonify(success=False, error=f"Servidor respondeu com erro {response.status_code}")
 
             except requests.exceptions.ConnectionError as e:
-                # Erro: Não conseguiu nem chegar no servidor (offline, recusou, etc.)
+                # Erro se o servidor estiver offline ou recusar a ligação
                 self._logger.error(f"Fazenda3D: Erro de conexão ao tentar contatar {server_url}. Erro: {e}")
                 return jsonify(success=False, error=f"Não foi possível conectar ao servidor (ConnectionError)")
             
             except requests.exceptions.Timeout as e:
-                # Erro: Demorou demais para responder
+                # Erro se demorar mais de 10 segundos
                 self._logger.error(f"Fazenda3D: Timeout ao tentar contatar {server_url}. Erro: {e}")
                 return jsonify(success=False, error="Servidor demorou para responder (Timeout)")
 
             except requests.exceptions.RequestException as e:
-                # Outro erro genérico da biblioteca requests (ex: URL mal formada)
+                # Outro erro qualquer (ex: URL mal formada)
                 self._logger.error(f"Fazenda3D: Erro de 'requests' ao tentar contatar {server_url}. Erro: {e}")
                 return jsonify(success=False, error=f"Erro na requisição: {e}")
-            # --- FIM DO BLOCO TRY...EXCEPT ---
+            # --- FIM DO BLOCO DE CORREÇÃO ---
 
     # ======== Loop periódico ========
     def _loop_status(self):
