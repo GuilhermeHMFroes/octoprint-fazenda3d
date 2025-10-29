@@ -25,13 +25,15 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
     def get_settings_defaults(self):
         return dict(
             servidor_url="",
-            token=""
+            token="",
+            nome_impressora=""
         )
 
     def get_template_vars(self):
         return dict(
             servidor_url=self._settings.get(["servidor_url"]),
             token=self._settings.get(["token"]),
+            nome_impressora=self._settings.get(["nome_impressora"])
         )
 
     def get_template_configs(self):
@@ -39,27 +41,25 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             dict(type="tab", name="Fazenda 3D", template="fazenda3d_tab.jinja2")
         ]
 
+    # --- CORREÇÃO AQUI ---
+    # Deve apontar para o nome original do ficheiro
     def get_assets(self):
-        # Este nome de ficheiro DEVE estar correto
-        return[
-            #dict(js=["static/js/octoprint_fazenda3d.js"])
-            dict(js=["js/fazenda3d.js"])
-
-        ] 
+        return dict(js=["js/octoprint_fazenda3d.js"])
 
     # ======== SimpleApiPlugin ========
     
-    # --- CORREÇÃO 1: Padronizar os nomes que a API espera ---
+    # --- CORREÇÃO AQUI ---
+    # A API espera 'servidor_url' e 'token'
     def get_api_commands(self):
-        # Deve corresponder ao payload do JavaScript
         return dict(connect=["servidor_url", "token"])
 
     def on_api_command(self, command, data):
         if command == "connect":
             
-            # --- CORREÇÃO 2: Ler os nomes corretos do 'data' ---
+            # --- CORREÇÃO AQUI ---
+            # Ler 'servidor_url' e 'token'
             server_url = data.get("servidor_url")
-            api_key = data.get("token")  # Ler 'token'
+            api_key = data.get("token")  # O JS envia 'token'
 
             if not server_url or not api_key:
                 return jsonify(success=False, error="URL ou Token não fornecidos")
@@ -67,18 +67,20 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             try:
                 self._logger.info(f"Fazenda3D: Tentando conectar em: {server_url}")
 
+                # O seu servidor principal pode esperar 'api_key', o que está correto
                 response = requests.post(
                     f"{server_url}/api/printer/connect",
-                    json={"api_key": api_key, "status": "idle"}, # O servidor principal espera "api_key"
+                    json={"api_key": api_key, "status": "idle"}, 
                     timeout=10
                 )
 
                 if response.status_code == 200:
                     self._logger.info("Fazenda3D: Conectado ao servidor com sucesso.")
                     
-                    # --- CORREÇÃO 3: Guardar os settings com os nomes corretos ---
+                    # --- CORREÇÃO AQUI ---
+                    # Guardar como 'servidor_url' e 'token'
                     self._settings.set(["servidor_url"], server_url)
-                    self._settings.set(["token"], api_key) # Guardar como 'token'
+                    self._settings.set(["token"], api_key) 
                     self._settings.save()
                     self._logger.info("Fazenda3D: Configurações salvas.")
 
@@ -101,18 +103,18 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
     # ======== Loop periódico ========
     def _loop_status(self):
-        # --- CORREÇÃO 4: Ler os nomes corretos dos settings ---
+        # --- CORREÇÃO AQUI ---
+        # Ler 'servidor_url' e 'token'
         servidor = self._settings.get(["servidor_url"])
-        token = self._settings.get(["token"]) # Ler 'token'
+        token = self._settings.get(["token"]) 
         nome = self._settings.get(["nome_impressora"])
         
-        # Esta linha agora deve mostrar os valores corretos depois de conectar
         self._logger.info(f"Loop Fazenda3D - servidor_url: {servidor}, token: {token}, nome: {nome}")
-
+        
+        # ... O resto do seu loop ...
         if not servidor or not token:
             return
-            
-        # ... (O resto do seu loop está bom) ...
+        
         try:
             state = self._printer.get_state_id()
             temps = self._printer.get_current_temperatures()
@@ -120,7 +122,6 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 progress = self._printer.get_current_data()["progress"]["completion"]
             except Exception:
                 progress = None
-
             payload = {
                 "token": token,
                 "nome_impressora": nome,
@@ -128,13 +129,11 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 "temperaturas": temps,
                 "progresso": progress
             }
-
             self._logger.debug(f"Enviando status ao servidor: {payload}")
             url_status = servidor.rstrip("/") + "/api/status"
             requests.post(url_status, json=payload, timeout=5)
         except Exception as e:
             self._logger.error(f"Erro ao construir ou enviar status: {e}")
-
         try:
             url_fila = servidor.rstrip("/") + "/api/fila?token=" + token
             resp = requests.get(url_fila, timeout=5)
@@ -147,7 +146,8 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                         self._baixar_e_imprimir(arquivo_url)
         except Exception as e:
             self._logger.error(f"Erro ao checar fila: {e}")
-
+            
+    # ... O resto do seu ficheiro ...
     def _baixar_e_imprimir(self, arquivo_url):
         try:
             r = requests.get(arquivo_url, timeout=10)

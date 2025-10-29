@@ -3,10 +3,9 @@ $(function() {
         var self = this;
 
         // --- DEBUG 1 ---
-        // Se isto não aparecer no console, o ficheiro não foi carregado.
         console.log("Fazenda3DViewModel FOI CONSTRUÍDO!");
 
-        // Estes nomes devem corresponder ao seu 'fazenda3d_tab.jinja2'
+        // Estes nomes devem corresponder ao 'fazenda3d_tab.jinja2'
         self.servidor_url = ko.observable();
         self.token = ko.observable();
         self.nome_impressora = ko.observable();
@@ -19,6 +18,7 @@ $(function() {
 
             self.connectionStatus("Conectando...");
 
+            // --- CORREÇÃO AQUI ---
             // Estes nomes devem corresponder ao 'get_api_commands' no Python
             var payload = {
                 servidor_url: self.servidor_url(), 
