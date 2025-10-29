@@ -34,6 +34,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             servidor_url=self._settings.get(["servidor_url"]),
             token=self._settings.get(["token"]),
             nome_impressora=self._settings.get(["nome_impressora"])
+            plugin_version=self._plugin_version
         )
 
     def get_template_configs(self):
