@@ -10,7 +10,7 @@ from flask import jsonify
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
                       octoprint.plugin.StartupPlugin,
-                      octoprint.plugin.SimpleApiPlugin:
+                      octoprint.plugin.SimpleApiPlugin):
 
     def __init__(self):
         super(Fazenda3DPlugin, self).__init__()
