@@ -10,13 +10,12 @@ from flask import jsonify
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
                       octoprint.plugin.StartupPlugin,
-                      octoprint.plugin.SimpleApiPlugin):  # <-- adiciona aqui
+                      octoprint.plugin.SimpleApiPlugin):
 
     def __init__(self):
         super(Fazenda3DPlugin, self).__init__()
         self._timer = None
 
-    # Chamado após o OctoPrint iniciar
     def on_after_startup(self):
         self._logger.info("Fazenda3DPlugin iniciado.")
         interval = 5.0  # segundos
@@ -43,75 +42,75 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         ]
 
     def get_assets(self):
+        # Este nome de ficheiro DEVE estar correto
         return dict(js=["js/octoprint_fazenda3d.js"])
 
     # ======== SimpleApiPlugin ========
+    
+    # --- CORREÇÃO 1: Padronizar os nomes que a API espera ---
     def get_api_commands(self):
-        return dict(connect=["servidor_url", "token", "nome_impressora"])
+        # Deve corresponder ao payload do JavaScript
+        return dict(connect=["servidor_url", "token"])
 
     def on_api_command(self, command, data):
         if command == "connect":
-            server_url = data.get("server_url")
-            api_key = data.get("api_key")
+            
+            # --- CORREÇÃO 2: Ler os nomes corretos do 'data' ---
+            server_url = data.get("servidor_url")
+            api_key = data.get("token")  # Ler 'token'
 
             if not server_url or not api_key:
-                return jsonify(success=False, error="URL ou API Key não fornecidos")
+                return jsonify(success=False, error="URL ou Token não fornecidos")
 
-            # --- INÍCIO DO BLOCO DE CORREÇÃO ---
             try:
-                # Esta é a linha de log que eu esperava ver
                 self._logger.info(f"Fazenda3D: Tentando conectar em: {server_url}")
 
                 response = requests.post(
                     f"{server_url}/api/printer/connect",
-                    json={"api_key": api_key, "status": "idle"},
-                    timeout=10  # Adiciona um timeout de 10 segundos
+                    json={"api_key": api_key, "status": "idle"}, # O servidor principal espera "api_key"
+                    timeout=10
                 )
 
-                # Se o servidor respondeu com sucesso (200 OK)
                 if response.status_code == 200:
                     self._logger.info("Fazenda3D: Conectado ao servidor com sucesso.")
                     
-                    # ------
-                    # PROBLEMA 2: VAMOS GUARDAR AS CONFIGURAÇÕES PARA O LOOP USAR
-                    self._settings.set(["server_url"], server_url)
-                    self._settings.set(["api_key"], api_key)
+                    # --- CORREÇÃO 3: Guardar os settings com os nomes corretos ---
+                    self._settings.set(["servidor_url"], server_url)
+                    self._settings.set(["token"], api_key) # Guardar como 'token'
                     self._settings.save()
                     self._logger.info("Fazenda3D: Configurações salvas.")
-                    # ------
 
                     return jsonify(success=True, status="connected")
                 else:
-                    # Se o servidor respondeu com um erro (404, 500, etc.)
                     self._logger.warning(f"Fazenda3D: Falha. Servidor respondeu com status {response.status_code}. Body: {response.text}")
                     return jsonify(success=False, error=f"Servidor respondeu com erro {response.status_code}")
 
             except requests.exceptions.ConnectionError as e:
-                # Erro se o servidor estiver offline ou recusar a ligação
                 self._logger.error(f"Fazenda3D: Erro de conexão ao tentar contatar {server_url}. Erro: {e}")
                 return jsonify(success=False, error=f"Não foi possível conectar ao servidor (ConnectionError)")
             
             except requests.exceptions.Timeout as e:
-                # Erro se demorar mais de 10 segundos
                 self._logger.error(f"Fazenda3D: Timeout ao tentar contatar {server_url}. Erro: {e}")
                 return jsonify(success=False, error="Servidor demorou para responder (Timeout)")
 
             except requests.exceptions.RequestException as e:
-                # Outro erro qualquer (ex: URL mal formada)
                 self._logger.error(f"Fazenda3D: Erro de 'requests' ao tentar contatar {server_url}. Erro: {e}")
                 return jsonify(success=False, error=f"Erro na requisição: {e}")
-            # --- FIM DO BLOCO DE CORREÇÃO ---
 
     # ======== Loop periódico ========
     def _loop_status(self):
+        # --- CORREÇÃO 4: Ler os nomes corretos dos settings ---
         servidor = self._settings.get(["servidor_url"])
-        token = self._settings.get(["token"])
+        token = self._settings.get(["token"]) # Ler 'token'
         nome = self._settings.get(["nome_impressora"])
+        
+        # Esta linha agora deve mostrar os valores corretos depois de conectar
         self._logger.info(f"Loop Fazenda3D - servidor_url: {servidor}, token: {token}, nome: {nome}")
 
         if not servidor or not token:
             return
-
+            
+        # ... (O resto do seu loop está bom) ...
         try:
             state = self._printer.get_state_id()
             temps = self._printer.get_current_temperatures()
