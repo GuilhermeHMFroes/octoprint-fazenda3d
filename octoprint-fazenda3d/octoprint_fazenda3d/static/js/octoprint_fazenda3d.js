@@ -7,44 +7,34 @@ $(function() {
         self.nome_impressora = ko.observable();
         self.connectionStatus = ko.observable("Desconectado");
 
-        self.connectToServer = function() {
-            // monta objeto
-            const dados = {
-                command: "connect",
-                servidor_url: self.servidor_url(),
-                token: self.token(),
-                nome_impressora: self.nome_impressora()
+                self.connectToServer = function() {
+            self.connectionStatusText("Conectando...");
+
+            // --- CORREÇÃO AQUI ---
+            // 1. Crie o payload pegando os valores atuais dos campos de texto.
+            //    Use parênteses () para obter o valor de um observable do Knockout.
+            var payload = {
+                server_url: self.serverUrl(), 
+                api_key: self.apiKey()
             };
+            // ---------------------
 
-            // loga no console tudo que vai ser enviado
-            console.log("=== Clique no botão Conectar ao Servidor ===");
-            console.log("Servidor URL digitado:", self.servidor_url());
-            console.log("Token digitado:", self.token());
-            console.log("Nome digitado:", self.nome_impressora());
-            console.log("Payload que será enviado:", dados);
-
-            fetch(API_BASEURL + "plugin/fazenda3d", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-Api-Key": UI_API_KEY
-                },
-                body: JSON.stringify(dados)
-            })
-            .then(r => r.json())
-            .then(resp => {
-                console.log("Resposta do plugin:", resp);
-                if (resp.success) {
-                    self.connectionStatus("Conectado com sucesso!");
-                } else {
-                    self.connectionStatus("Falha: " + (resp.message || "Erro"));
-                }
-            })
-            .catch(err => {
-                console.error("Erro ao chamar plugin:", err);
-                self.connectionStatus("Erro ao enviar dados ao plugin");
-            });
+            // 2. Envie o payload junto com o comando
+            OctoPrint.simpleApiCommand("fazenda3d", "connect", payload) // <--- Use o payload aqui
+                .done(function(response) {
+                    if(response.success) {
+                        self.connectionStatusText("Conectado");
+                    } else {
+                        // Se o python retornar um erro (ex: URL vazia), mostre-o
+                        self.connectionStatusText("Falha: " + (response.error || "Erro desconhecido"));
+                    }
+                })
+                .fail(function() {
+                    // Isso acontece se o backend do Python falhar (erro 500)
+                    self.connectionStatusText("Erro de comunicação com o plugin");
+                });
         };
+
     }
 
     OCTOPRINT_VIEWMODELS.push({
