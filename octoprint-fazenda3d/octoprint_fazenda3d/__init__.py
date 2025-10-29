@@ -43,7 +43,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
     def get_assets(self):
         # Este nome de ficheiro DEVE estar correto
-        return dict(js=["js/octoprint_fazenda3d.js"])
+        return dict(js=["static/js/octoprint_fazenda3d.js"])
 
     # ======== SimpleApiPlugin ========
     
