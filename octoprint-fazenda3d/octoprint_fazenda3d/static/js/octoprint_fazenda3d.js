@@ -1,11 +1,12 @@
+// Em ~/octoprint-fazenda3d/octoprint_fazenda3d/static/js/octoprint_fazenda3d.js
 $(function() {
     function Fazenda3DViewModel(parameters) {
         var self = this;
 
         // --- DEBUG 1 ---
+        // (Isto agora deve estar a aparecer no seu console)
         console.log("Fazenda3DViewModel FOI CONSTRUÍDO!");
 
-        // Estes nomes devem corresponder ao 'fazenda3d_tab.jinja2'
         self.servidor_url = ko.observable();
         self.token = ko.observable();
         self.nome_impressora = ko.observable();
@@ -13,22 +14,18 @@ $(function() {
 
         self.connectToServer = function() {
             
-            // --- DEBUG 2 ---
             console.log("Botão 'connectToServer' FOI CLICADO!");
-
             self.connectionStatus("Conectando...");
 
-            // --- CORREÇÃO AQUI ---
-            // Estes nomes devem corresponder ao 'get_api_commands' no Python
             var payload = {
                 servidor_url: self.servidor_url(), 
                 token: self.token()
             };
             
-            // --- DEBUG 3 ---
             console.log("Enviando payload:", payload);
 
-            OctoPrint.simpleApiCommand("fazenda3d", "connect", payload)
+            // --- A CORREÇÃO FINAL ESTÁ AQUI ---
+            OctoPrint.simpleApiCommand("octoprint_fazenda3d", "connect", payload)
                 .done(function(response) {
                     console.log("Resposta do servidor:", response);
                     if(response.success) {
@@ -38,8 +35,9 @@ $(function() {
                     }
                 })
                 .fail(function(jqXHR, textStatus, errorThrown) {
+                    // O erro 400 estava a fazer com que o código caísse aqui
                     console.error("Falha na chamada AJAX:", textStatus, errorThrown, jqXHR.responseText);
-                    self.connectionStatus("Erro de comunicação com o plugin");
+                    self.connectionStatus("Erro de comunicação com o plugin (verifique o ID)");
                 });
         };
 
@@ -48,6 +46,6 @@ $(function() {
     OCTOPRINT_VIEWMODELS.push({
         construct: Fazenda3DViewModel,
         dependencies: [], 
-        elements: ["#tab_plugin_fazenda3d"] // ID da sua aba
+        elements: ["#tab_plugin_fazenda3d"]
     });
 });
