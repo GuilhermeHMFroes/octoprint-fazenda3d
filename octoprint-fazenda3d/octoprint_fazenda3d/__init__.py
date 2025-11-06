@@ -7,10 +7,12 @@ import octoprint.plugin
 import octoprint.util
 from flask import jsonify
 
+# --- CORREÇÃO 1: ADICIONAR O AssetPlugin DE VOLTA ---
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
                       octoprint.plugin.StartupPlugin,
-                      octoprint.plugin.SimpleApiPlugin):
+                      octoprint.plugin.SimpleApiPlugin,
+                      octoprint.plugin.AssetPlugin):  # <-- DEVE ESTAR AQUI
 
     def __init__(self):
         super(Fazenda3DPlugin, self).__init__()
@@ -41,24 +43,25 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             dict(type="tab", name="Fazenda 3D", template="fazenda3d_tab.jinja2")
         ]
 
-    # --- CORREÇÃO AQUI ---
-    # Deve apontar para o nome original do ficheiro
+    # --- CORREÇÃO 2: USAR O get_assets (O MÉTODO OFICIAL) ---
+    # Isto diz ao OctoPrint para carregar o seu script em TODAS as páginas.
     def get_assets(self):
-        #return dict(js=["statict/js/octoprint_fazenda3d.js"])
-        return dict()
+        return dict(js=["js/octoprint_fazenda3d.js"])
 
     # ======== SimpleApiPlugin ========
     
-    # --- CORREÇÃO AQUI ---
-    # A API espera 'servidor_url' e 'token'
     def get_api_commands(self):
+        # A API espera 'servidor_url' e 'token'
         return dict(connect=["servidor_url", "token"])
+
+    # --- CORREÇÃO 3: ADICIONAR A FUNÇÃO DE PERMISSÕES ---
+    # Isto corrige o aviso de "is_api_protected" que você viu.
+    # Estamos a dizer que qualquer utilizador logado pode usar esta API.
+    def is_api_protected(self):
+        return True # Exige que o utilizador esteja logado
 
     def on_api_command(self, command, data):
         if command == "connect":
-            
-            # --- CORREÇÃO AQUI ---
-            # Ler 'servidor_url' e 'token'
             server_url = data.get("servidor_url")
             api_key = data.get("token")  # O JS envia 'token'
 
@@ -68,7 +71,6 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             try:
                 self._logger.info(f"Fazenda3D: Tentando conectar em: {server_url}")
 
-                # O seu servidor principal pode esperar 'api_key', o que está correto
                 response = requests.post(
                     f"{server_url}/api/printer/connect",
                     json={"api_key": api_key, "status": "idle"}, 
@@ -78,8 +80,6 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 if response.status_code == 200:
                     self._logger.info("Fazenda3D: Conectado ao servidor com sucesso.")
                     
-                    # --- CORREÇÃO AQUI ---
-                    # Guardar como 'servidor_url' e 'token'
                     self._settings.set(["servidor_url"], server_url)
                     self._settings.set(["token"], api_key) 
                     self._settings.save()
@@ -104,18 +104,17 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
     # ======== Loop periódico ========
     def _loop_status(self):
-        # --- CORREÇÃO AQUI ---
-        # Ler 'servidor_url' e 'token'
         servidor = self._settings.get(["servidor_url"])
         token = self._settings.get(["token"]) 
         nome = self._settings.get(["nome_impressora"])
         
-        self._logger.info(f"Loop Fazenda3D - servidor_url: {servidor}, token: {token}, nome: {nome}")
+        # O log do loop está bom
+        # self._logger.info(f"Loop Fazenda3D - servidor_url: {servidor}, token: {token}, nome: {nome}")
         
-        # ... O resto do seu loop ...
         if not servidor or not token:
             return
         
+        # ... (O resto do seu loop está bom) ...
         try:
             state = self._printer.get_state_id()
             temps = self._printer.get_current_temperatures()
@@ -130,7 +129,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 "temperaturas": temps,
                 "progresso": progress
             }
-            self._logger.debug(f"Enviando status ao servidor: {payload}")
+            # self._logger.debug(f"Enviando status ao servidor: {payload}")
             url_status = servidor.rstrip("/") + "/api/status"
             requests.post(url_status, json=payload, timeout=5)
         except Exception as e:
@@ -148,7 +147,6 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         except Exception as e:
             self._logger.error(f"Erro ao checar fila: {e}")
             
-    # ... O resto do seu ficheiro ...
     def _baixar_e_imprimir(self, arquivo_url):
         try:
             r = requests.get(arquivo_url, timeout=10)
