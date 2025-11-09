@@ -63,22 +63,39 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
     def on_api_command(self, command, data):
         if command == "connect":
             server_url = data.get("servidor_url")
-            api_key = data.get("token")  # O JS envia 'token'
+            # "api_key" vem do JavaScript, mas o seu servidor espera "token"
+            api_key = data.get("token") 
 
             if not server_url or not api_key:
                 return jsonify(success=False, error="URL ou Token não fornecidos")
 
+            # Adiciona "http://" se faltar
+            if not server_url.startswith("http://") and not server_url.startswith("https://"):
+                self._logger.info(f"Fazenda3D: URL sem 'http'. Adicionando 'http://' automaticamente.")
+                server_url = "http://" + server_url.strip("/")
+            
             try:
-                self._logger.info(f"Fazenda3D: Tentando conectar em: {server_url}")
+                # --- CORREÇÃO 1: MUDAR A ROTA ---
+                # A rota no seu app.py é "/api/register_printer"
+                url_de_conexao = f"{server_url}/api/register_printer"
+                
+                self._logger.info(f"Fazenda3D: Tentando conectar em: {url_de_conexao}")
+
+                # --- CORREÇÃO 2: MUDAR O JSON ---
+                # O seu app.py espera "token", não "api_key"
+                payload = {
+                    "token": api_key,
+                    "nome_impressora": "OctoPrint" # Pode adicionar o nome da impressora aqui
+                }
 
                 response = requests.post(
-                    f"{server_url}/api/printer/connect",
-                    json={"api_key": api_key, "status": "idle"}, 
+                    url_de_conexao,
+                    json=payload, 
                     timeout=10
                 )
 
                 if response.status_code == 200:
-                    self._logger.info("Fazenda3D: Conectado ao servidor com sucesso.")
+                    self._logger.info("Fazenda3D: Conectado e registrado no servidor com sucesso.")
                     
                     self._settings.set(["servidor_url"], server_url)
                     self._settings.set(["token"], api_key) 
