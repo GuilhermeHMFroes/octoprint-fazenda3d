@@ -129,13 +129,14 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         token = self._settings.get(["token"]) 
         nome = self._settings.get(["nome_impressora"])
         
-        if not servidor_url or not token: return
+        if not servidor_url or not token:
+            return
         
-        # --- 1. PEGAR DADOS ---
+        # --- 1. COLETAR DADOS DA IMPRESSORA ---
         state = self._printer.get_state_id()
         temps = self._printer.get_current_temperatures()
         
-        # Pega o nome do arquivo sendo impresso
+        # Tenta pegar o nome do arquivo sendo impresso (Job Name)
         job_name = None
         try:
             job_data = self._printer.get_current_job()
@@ -144,11 +145,18 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         except:
             pass
             
-        # Pega progresso
+        # Tenta pegar o progresso (0-100%)
         try:
             progress = self._printer.get_current_data()["progress"]["completion"]
         except:
             progress = None
+
+        # --- NOVO: PEGAR A URL DA WEBCAM CONFIGURADA NO OCTOPRINT ---
+        # Isso lê o campo "Stream URL" nas configurações globais do OctoPrint
+        webcam_url = self._settings.global_get(["webcam", "streamUrl"])
+        if not webcam_url:
+            webcam_url = ""
+        # ------------------------------------------------------------
             
         payload = {
             "token": token,
@@ -156,17 +164,18 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             "estado": state,
             "temperaturas": temps,
             "progresso": progress,
-            "arquivo_imprimindo": job_name # NOVO CAMPO
+            "arquivo_imprimindo": job_name,
+            "webcam_url": webcam_url  # <--- ENVIAMOS A URL AQUI
         }
         
-        # --- 2. ENVIAR STATUS ---
+        # --- 2. ENVIAR STATUS PARA O SERVIDOR ---
         try:
             url_status = servidor_url.rstrip("/") + "/api/status"
             requests.post(url_status, json=payload, timeout=5)
         except Exception as e:
             self._logger.error(f"Erro ao enviar status: {e}")
 
-        # --- 3. VERIFICAR COMANDOS DE CONTROLE (NOVO) ---
+        # --- 3. VERIFICAR COMANDOS DE CONTROLE (PAUSE/CANCEL) ---
         try:
             url_cmd = servidor_url.rstrip("/") + "/api/printer/check_commands?token=" + token
             r = requests.get(url_cmd, timeout=5)
@@ -184,7 +193,8 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         except Exception as e:
             self._logger.error(f"Erro ao checar comandos: {e}")
 
-        # --- 4. VERIFICAR FILA (Se não estiver imprimindo) ---
+        # --- 4. VERIFICAR FILA (Apenas se NÃO estiver imprimindo) ---
+        # Se estiver imprimindo ou pausado, não busca novos arquivos para economizar rede
         if self._printer.is_printing() or self._printer.is_paused():
             return 
 
@@ -194,6 +204,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             if resp.status_code == 200:
                 obj = resp.json()
                 if obj.get("novo_arquivo"):
+                    # Se tiver arquivo novo, chama a função de download
                     self._baixar_e_imprimir(obj.get("arquivo_url"))
         except Exception:
             pass
