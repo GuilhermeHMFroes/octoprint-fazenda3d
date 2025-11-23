@@ -174,23 +174,28 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         try:
             import urllib.parse
             
-            # 1. OBTER A PASTA CORRETA (MÉTODO OFICIAL)
-            # Isso retorna o caminho exato (ex: /home/pi/.octoprint/uploads) como TEXTO.
-            uploads_folder = self._settings.get_base_folder("uploads")
+            # 1. DESCOBRIR A PASTA DE UPLOADS
+            # Tenta pegar pela configuração global (chave correta: 'folder', 'uploads')
+            uploads_folder = self._settings.global_get(["folder", "uploads"])
             
+            # Fallback de segurança: Se não encontrar a configuração, usa o padrão do Linux
             if not uploads_folder:
-                raise Exception("Não foi possível localizar a pasta de uploads do OctoPrint.")
+                self._logger.warning("Fazenda3D: Configuração de pasta não encontrada. Usando caminho padrão.")
+                uploads_folder = os.path.expanduser("~/.octoprint/uploads")
+            
+            # Garante que a pasta existe
+            if not os.path.exists(uploads_folder):
+                os.makedirs(uploads_folder)
 
             # 2. LIMPAR O NOME DO ARQUIVO
-            # Decodifica URL (remove %20) e pega só o nome final
             raw_filename = os.path.basename(urllib.parse.unquote(arquivo_url))
-            # Remove caracteres perigosos para garantir que é um nome válido
+            # Remove caracteres estranhos
             filename = "".join(x for x in raw_filename if (x.isalnum() or x in "._- "))
             
-            # Caminho completo final
+            # Caminho final
             file_path = os.path.join(uploads_folder, filename)
 
-            # 3. BAIXAR E SALVAR (Python Nativo)
+            # 3. BAIXAR E SALVAR (Método "Raiz")
             r = requests.get(arquivo_url, stream=True, timeout=60)
             r.raise_for_status()
 
@@ -201,13 +206,10 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     if chunk:
                         f.write(chunk)
             
-            self._logger.info("Fazenda3D: Download concluído.")
+            self._logger.info("Fazenda3D: Download concluído e salvo no disco.")
 
             # 4. SELECIONAR E IMPRIMIR
-            # O OctoPrint precisa de um pequeno tempo para perceber que o arquivo apareceu na pasta
-            # mas o select_file costuma funcionar se o arquivo já estiver no disco.
-            
-            # O primeiro parâmetro do select_file é o caminho RELATIVO à pasta de uploads (ou seja, só o filename)
+            # O select_file espera o caminho relativo à pasta de uploads (apenas o nome do arquivo)
             self._printer.select_file(filename, False, printAfterSelect=True)
             
             self._logger.info(f"Fazenda3D: COMANDO DE IMPRESSÃO ENVIADO para {filename}")
