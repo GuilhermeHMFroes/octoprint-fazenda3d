@@ -125,38 +125,46 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
     # ======== Loop periódico ========
     def _loop_status(self):
-        servidor = self._settings.get(["servidor_url"])
+        servidor = self._settings.global_get(["folder", "uploads"]) # Apenas para garantir variáveis, não usado aqui
+        servidor_url = self._settings.get(["servidor_url"])
         token = self._settings.get(["token"]) 
         nome = self._settings.get(["nome_impressora"])
         
-        # O log do loop está bom
-        # self._logger.info(f"Loop Fazenda3D - servidor_url: {servidor}, token: {token}, nome: {nome}")
-        
-        if not servidor or not token:
+        if not servidor_url or not token:
             return
         
-        # ... (O resto do seu loop está bom) ...
+        # 1. ENVIAR STATUS (Isso deve acontecer SEMPRE, para atualizar o site)
         try:
+            # Pega o estado atual (Ex: "PRINTING", "OPERATIONAL", "PAUSED")
             state = self._printer.get_state_id()
             temps = self._printer.get_current_temperatures()
             try:
+                # Tenta pegar o progresso (0 a 100)
                 progress = self._printer.get_current_data()["progress"]["completion"]
             except Exception:
                 progress = None
+            
             payload = {
                 "token": token,
                 "nome_impressora": nome,
-                "estado": state,
+                "estado": state, # O OctoPrint geralmente manda em MAIÚSCULAS (PRINTING)
                 "temperaturas": temps,
                 "progresso": progress
             }
-            # self._logger.debug(f"Enviando status ao servidor: {payload}")
-            url_status = servidor.rstrip("/") + "/api/status"
+            
+            url_status = servidor_url.rstrip("/") + "/api/status"
             requests.post(url_status, json=payload, timeout=5)
         except Exception as e:
-            self._logger.error(f"Erro ao construir ou enviar status: {e}")
+            self._logger.error(f"Erro ao enviar status: {e}")
+
+        # 2. VERIFICAR FILA (A Lógica Inteligente)
+        # Só verifica se houver arquivo novo SE a impressora NÃO estiver ocupada
+        if self._printer.is_printing() or self._printer.is_paused():
+            # Se estiver imprimindo, NÃO verifica a fila. Sai da função aqui.
+            return 
+
         try:
-            url_fila = servidor.rstrip("/") + "/api/fila?token=" + token
+            url_fila = servidor_url.rstrip("/") + "/api/fila?token=" + token
             resp = requests.get(url_fila, timeout=5)
             if resp.status_code == 200:
                 obj = resp.json()
