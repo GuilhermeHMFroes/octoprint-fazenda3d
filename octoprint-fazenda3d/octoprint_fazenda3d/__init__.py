@@ -10,6 +10,7 @@ from flask import jsonify
 import octoprint.filemanager.destinations
 from octoprint.filemanager.util import StreamWrapper
 
+
 # --- CORREÇÃO 1: ADICIONAR O AssetPlugin DE VOLTA ---
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
@@ -170,43 +171,44 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
     def _baixar_e_imprimir(self, arquivo_url):
         self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
         
-        # Imports locais para garantir que não há erro de referência
-        import octoprint.filemanager.destinations
-        from octoprint.filemanager.util import StreamWrapper
-
         try:
-            # 1. Baixa o arquivo
+            # 1. Configurar caminhos
+            # Descobre onde é a pasta de uploads do OctoPrint
+            uploads_folder = self._settings.global_get(["server", "uploads"])
+            if not uploads_folder:
+                # Fallback se não encontrar a configuração
+                uploads_folder = os.path.expanduser("~/.octoprint/uploads")
+            
+            # Limpa o nome do arquivo (remove %20 e espaços estranhos)
+            import urllib.parse
+            filename = os.path.basename(urllib.parse.unquote(arquivo_url))
+            
+            # Caminho completo local onde vamos salvar
+            file_path = os.path.join(uploads_folder, filename)
+            
+            # 2. Baixar e Salvar manualmente (Método "Raiz")
+            # stream=True é importante para não encher a memória RAM
             r = requests.get(arquivo_url, stream=True, timeout=60)
             r.raise_for_status() 
 
-            filename = os.path.basename(arquivo_url)
+            self._logger.info(f"Fazenda3D: Salvando manualmente em: {file_path}")
             
-            # 2. Prepara o Stream
-            # Usamos r.raw para ler os bytes diretamente
-            stream = StreamWrapper(filename, r.raw)
-            destination = octoprint.filemanager.destinations.FileDestinations.LOCAL
-            
-            self._logger.info(f"Fazenda3D: Tentando salvar '{filename}' no OctoPrint...")
+            with open(file_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024 * 8): 
+                    if chunk:
+                        f.write(chunk)
+                        
+            self._logger.info("Fazenda3D: Arquivo gravado no disco com sucesso.")
 
-            # 3. Salva no Gerenciador de Arquivos
-            # ADICIONADO: allow_overwrite=True (Isso corrige o erro se o arquivo já existir)
-            added_file = self._file_manager.save_file(
-                destination, 
-                filename, 
-                stream, 
-                allow_overwrite=True 
-            )
-            
-            self._logger.info(f"Fazenda3D: Arquivo salvo com sucesso: {added_file}")
-            
-            # 4. Seleciona e Imprime
-            # printAfterSelect=True faz a impressão começar imediatamente
-            self._printer.select_file(added_file, False, printAfterSelect=True)
+            # 3. Selecionar e Imprimir
+            # O OctoPrint monitora a pasta, então basta chamar select_file com o nome
+            # 'sd': False significa que é local (não no cartão SD da impressora)
+            # 'printAfterSelect': True começa a imprimir na hora
+            self._printer.select_file(filename, False, printAfterSelect=True)
             
             self._logger.info(f"Fazenda3D: COMANDO DE IMPRESSÃO ENVIADO para {filename}")
 
         except Exception as e:
-            # Este log vai aparecer no octoprint.log se houver erro
             self._logger.error(f"Fazenda3D: ERRO CRÍTICO ao processar arquivo: {e}")
 
     def on_shutdown(self):
