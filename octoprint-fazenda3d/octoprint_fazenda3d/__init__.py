@@ -52,7 +52,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
     
     def get_api_commands(self):
         # A API espera 'servidor_url' e 'token'
-        return dict(connect=["servidor_url", "token"])
+        return dict(connect=["servidor_url", "nome_impressora", "token"])
 
     # --- CORREÇÃO 3: ADICIONAR A FUNÇÃO DE PERMISSÕES ---
     # Isto corrige o aviso de "is_api_protected" que você viu.
@@ -65,6 +65,8 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             server_url = data.get("servidor_url")
             # "api_key" vem do JavaScript, mas o seu servidor espera "token"
             api_key = data.get("token") 
+
+            nome_impressora = data.get("nome_impressora")
 
             if not server_url or not api_key:
                 return jsonify(success=False, error="URL ou Token não fornecidos")
@@ -85,7 +87,8 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 # O seu app.py espera "token", não "api_key"
                 payload = {
                     "token": api_key,
-                    "nome_impressora": "OctoPrint" # Pode adicionar o nome da impressora aqui
+                    "nome_impressora": nome_impressora
+                    #"nome_impressora": "OctoPrint" # Pode adicionar o nome da impressora aqui
                 }
 
                 response = requests.post(
@@ -99,6 +102,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     
                     self._settings.set(["servidor_url"], server_url)
                     self._settings.set(["token"], api_key) 
+                    self._settings.set(["nome_impressora"], nome_impressora)
                     self._settings.save()
                     self._logger.info("Fazenda3D: Configurações salvas.")
 
