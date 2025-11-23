@@ -168,32 +168,46 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             self._logger.error(f"Erro ao checar fila: {e}")
             
     def _baixar_e_imprimir(self, arquivo_url):
-        self._logger.info(f"Iniciando download de: {arquivo_url}")
+        self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
         
+        # Imports locais para garantir que não há erro de referência
+        import octoprint.filemanager.destinations
+        from octoprint.filemanager.util import StreamWrapper
+
         try:
-            # stream=True é importante para arquivos grandes
-            r = requests.get(arquivo_url, stream=True, timeout=30)
-            r.raise_for_status() # Garante que não houve erro 404 ou 500
+            # 1. Baixa o arquivo
+            r = requests.get(arquivo_url, stream=True, timeout=60)
+            r.raise_for_status() 
 
             filename = os.path.basename(arquivo_url)
             
-            # Prepara o stream para o OctoPrint
+            # 2. Prepara o Stream
+            # Usamos r.raw para ler os bytes diretamente
             stream = StreamWrapper(filename, r.raw)
             destination = octoprint.filemanager.destinations.FileDestinations.LOCAL
             
-            # O PULO DO GATO: Usar o File Manager do OctoPrint
-            # Ele salva, indexa e garante que o arquivo está pronto para uso
-            added_file = self._file_manager.save_file(destination, filename, stream)
+            self._logger.info(f"Fazenda3D: Tentando salvar '{filename}' no OctoPrint...")
+
+            # 3. Salva no Gerenciador de Arquivos
+            # ADICIONADO: allow_overwrite=True (Isso corrige o erro se o arquivo já existir)
+            added_file = self._file_manager.save_file(
+                destination, 
+                filename, 
+                stream, 
+                allow_overwrite=True 
+            )
             
-            self._logger.info(f"Arquivo salvo com sucesso no OctoPrint: {added_file}")
+            self._logger.info(f"Fazenda3D: Arquivo salvo com sucesso: {added_file}")
             
-            # Agora sim, mandamos imprimir usando o caminho que o OctoPrint nos devolveu
+            # 4. Seleciona e Imprime
+            # printAfterSelect=True faz a impressão começar imediatamente
             self._printer.select_file(added_file, False, printAfterSelect=True)
             
-            self._logger.info(f"Comando de impressão enviado para: {filename}")
+            self._logger.info(f"Fazenda3D: COMANDO DE IMPRESSÃO ENVIADO para {filename}")
 
         except Exception as e:
-            self._logger.error(f"Erro crítico ao baixar e imprimir: {e}")
+            # Este log vai aparecer no octoprint.log se houver erro
+            self._logger.error(f"Fazenda3D: ERRO CRÍTICO ao processar arquivo: {e}")
 
     def on_shutdown(self):
         if self._timer:
