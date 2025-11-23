@@ -125,42 +125,67 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
     # ======== Loop periódico ========
     def _loop_status(self):
-        servidor = self._settings.global_get(["folder", "uploads"]) # Apenas para garantir variáveis, não usado aqui
         servidor_url = self._settings.get(["servidor_url"])
         token = self._settings.get(["token"]) 
         nome = self._settings.get(["nome_impressora"])
         
-        if not servidor_url or not token:
-            return
+        if not servidor_url or not token: return
         
-        # 1. ENVIAR STATUS (Isso deve acontecer SEMPRE, para atualizar o site)
+        # --- 1. PEGAR DADOS ---
+        state = self._printer.get_state_id()
+        temps = self._printer.get_current_temperatures()
+        
+        # Pega o nome do arquivo sendo impresso
+        job_name = None
         try:
-            # Pega o estado atual (Ex: "PRINTING", "OPERATIONAL", "PAUSED")
-            state = self._printer.get_state_id()
-            temps = self._printer.get_current_temperatures()
-            try:
-                # Tenta pegar o progresso (0 a 100)
-                progress = self._printer.get_current_data()["progress"]["completion"]
-            except Exception:
-                progress = None
+            job_data = self._printer.get_current_job()
+            if job_data and "job" in job_data and "file" in job_data["job"]:
+                job_name = job_data["job"]["file"]["name"]
+        except:
+            pass
             
-            payload = {
-                "token": token,
-                "nome_impressora": nome,
-                "estado": state, # O OctoPrint geralmente manda em MAIÚSCULAS (PRINTING)
-                "temperaturas": temps,
-                "progresso": progress
-            }
+        # Pega progresso
+        try:
+            progress = self._printer.get_current_data()["progress"]["completion"]
+        except:
+            progress = None
             
+        payload = {
+            "token": token,
+            "nome_impressora": nome,
+            "estado": state,
+            "temperaturas": temps,
+            "progresso": progress,
+            "arquivo_imprimindo": job_name # NOVO CAMPO
+        }
+        
+        # --- 2. ENVIAR STATUS ---
+        try:
             url_status = servidor_url.rstrip("/") + "/api/status"
             requests.post(url_status, json=payload, timeout=5)
         except Exception as e:
             self._logger.error(f"Erro ao enviar status: {e}")
 
-        # 2. VERIFICAR FILA (A Lógica Inteligente)
-        # Só verifica se houver arquivo novo SE a impressora NÃO estiver ocupada
+        # --- 3. VERIFICAR COMANDOS DE CONTROLE (NOVO) ---
+        try:
+            url_cmd = servidor_url.rstrip("/") + "/api/printer/check_commands?token=" + token
+            r = requests.get(url_cmd, timeout=5)
+            if r.status_code == 200:
+                cmd = r.json().get("command")
+                if cmd == "pause":
+                    self._printer.pause_print()
+                    self._logger.info("Comando PAUSAR recebido do servidor.")
+                elif cmd == "resume":
+                    self._printer.resume_print()
+                    self._logger.info("Comando RESUMIR recebido do servidor.")
+                elif cmd == "cancel":
+                    self._printer.cancel_print()
+                    self._logger.info("Comando CANCELAR recebido do servidor.")
+        except Exception as e:
+            self._logger.error(f"Erro ao checar comandos: {e}")
+
+        # --- 4. VERIFICAR FILA (Se não estiver imprimindo) ---
         if self._printer.is_printing() or self._printer.is_paused():
-            # Se estiver imprimindo, NÃO verifica a fila. Sai da função aqui.
             return 
 
         try:
@@ -169,12 +194,9 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             if resp.status_code == 200:
                 obj = resp.json()
                 if obj.get("novo_arquivo"):
-                    arquivo_url = obj.get("arquivo_url")
-                    if arquivo_url:
-                        self._logger.info(f"Novo arquivo detectado na fila: {arquivo_url}")
-                        self._baixar_e_imprimir(arquivo_url)
-        except Exception as e:
-            self._logger.error(f"Erro ao checar fila: {e}")
+                    self._baixar_e_imprimir(obj.get("arquivo_url"))
+        except Exception:
+            pass
             
     def _baixar_e_imprimir(self, arquivo_url):
         self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
