@@ -172,44 +172,48 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
         
         try:
-            # 1. Configurar caminhos
-            # Descobre onde é a pasta de uploads do OctoPrint
-            uploads_folder = self._settings.global_get(["server", "uploads"])
-            if not uploads_folder:
-                # Fallback se não encontrar a configuração
-                uploads_folder = os.path.expanduser("~/.octoprint/uploads")
-            
-            # Limpa o nome do arquivo (remove %20 e espaços estranhos)
             import urllib.parse
-            filename = os.path.basename(urllib.parse.unquote(arquivo_url))
             
-            # Caminho completo local onde vamos salvar
-            file_path = os.path.join(uploads_folder, filename)
+            # 1. OBTER A PASTA CORRETA (MÉTODO OFICIAL)
+            # Isso retorna o caminho exato (ex: /home/pi/.octoprint/uploads) como TEXTO.
+            uploads_folder = self._settings.get_base_folder("uploads")
             
-            # 2. Baixar e Salvar manualmente (Método "Raiz")
-            # stream=True é importante para não encher a memória RAM
-            r = requests.get(arquivo_url, stream=True, timeout=60)
-            r.raise_for_status() 
+            if not uploads_folder:
+                raise Exception("Não foi possível localizar a pasta de uploads do OctoPrint.")
 
-            self._logger.info(f"Fazenda3D: Salvando manualmente em: {file_path}")
+            # 2. LIMPAR O NOME DO ARQUIVO
+            # Decodifica URL (remove %20) e pega só o nome final
+            raw_filename = os.path.basename(urllib.parse.unquote(arquivo_url))
+            # Remove caracteres perigosos para garantir que é um nome válido
+            filename = "".join(x for x in raw_filename if (x.isalnum() or x in "._- "))
             
+            # Caminho completo final
+            file_path = os.path.join(uploads_folder, filename)
+
+            # 3. BAIXAR E SALVAR (Python Nativo)
+            r = requests.get(arquivo_url, stream=True, timeout=60)
+            r.raise_for_status()
+
+            self._logger.info(f"Fazenda3D: Salvando arquivo em: {file_path}")
+
             with open(file_path, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=1024 * 8): 
                     if chunk:
                         f.write(chunk)
-                        
-            self._logger.info("Fazenda3D: Arquivo gravado no disco com sucesso.")
+            
+            self._logger.info("Fazenda3D: Download concluído.")
 
-            # 3. Selecionar e Imprimir
-            # O OctoPrint monitora a pasta, então basta chamar select_file com o nome
-            # 'sd': False significa que é local (não no cartão SD da impressora)
-            # 'printAfterSelect': True começa a imprimir na hora
+            # 4. SELECIONAR E IMPRIMIR
+            # O OctoPrint precisa de um pequeno tempo para perceber que o arquivo apareceu na pasta
+            # mas o select_file costuma funcionar se o arquivo já estiver no disco.
+            
+            # O primeiro parâmetro do select_file é o caminho RELATIVO à pasta de uploads (ou seja, só o filename)
             self._printer.select_file(filename, False, printAfterSelect=True)
             
             self._logger.info(f"Fazenda3D: COMANDO DE IMPRESSÃO ENVIADO para {filename}")
 
         except Exception as e:
-            self._logger.error(f"Fazenda3D: ERRO CRÍTICO ao processar arquivo: {e}")
+            self._logger.error(f"Fazenda3D: ERRO CRÍTICO ao baixar e imprimir: {e}")
 
     def on_shutdown(self):
         if self._timer:
