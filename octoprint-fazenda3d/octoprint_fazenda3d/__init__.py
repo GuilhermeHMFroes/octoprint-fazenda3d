@@ -7,6 +7,9 @@ import octoprint.plugin
 import octoprint.util
 from flask import jsonify
 
+import octoprint.filemanager.destinations
+from octoprint.filemanager.util import StreamWrapper
+
 # --- CORREÇÃO 1: ADICIONAR O AssetPlugin DE VOLTA ---
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
@@ -165,26 +168,32 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             self._logger.error(f"Erro ao checar fila: {e}")
             
     def _baixar_e_imprimir(self, arquivo_url):
+        self._logger.info(f"Iniciando download de: {arquivo_url}")
+        
         try:
-            r = requests.get(arquivo_url, timeout=10)
-            if r.status_code == 200:
-                arquivo_bytes = r.content
-                folder = self._settings.global_get(["server", "uploads"])
-                if not folder:
-                    folder = os.path.join(os.path.dirname(__file__), "temp_uploads")
-                os.makedirs(folder, exist_ok=True)
-                filename = os.path.basename(arquivo_url)
-                caminho_local = os.path.join(folder, filename)
-                with open(caminho_local, "wb") as f:
-                    f.write(arquivo_bytes)
-                self._logger.info(f"Arquivo {filename} baixado com sucesso.")
-                relpath = os.path.join("temp_uploads", filename)
-                self._printer.select_file(relpath, False, printAfterSelect=True)
-                self._logger.info(f"Iniciando impressão do arquivo {filename}.")
-            else:
-                self._logger.error(f"Erro ao baixar o arquivo: código {r.status_code}")
+            # stream=True é importante para arquivos grandes
+            r = requests.get(arquivo_url, stream=True, timeout=30)
+            r.raise_for_status() # Garante que não houve erro 404 ou 500
+
+            filename = os.path.basename(arquivo_url)
+            
+            # Prepara o stream para o OctoPrint
+            stream = StreamWrapper(filename, r.raw)
+            destination = octoprint.filemanager.destinations.FileDestinations.LOCAL
+            
+            # O PULO DO GATO: Usar o File Manager do OctoPrint
+            # Ele salva, indexa e garante que o arquivo está pronto para uso
+            added_file = self._file_manager.save_file(destination, filename, stream)
+            
+            self._logger.info(f"Arquivo salvo com sucesso no OctoPrint: {added_file}")
+            
+            # Agora sim, mandamos imprimir usando o caminho que o OctoPrint nos devolveu
+            self._printer.select_file(added_file, False, printAfterSelect=True)
+            
+            self._logger.info(f"Comando de impressão enviado para: {filename}")
+
         except Exception as e:
-            self._logger.error(f"Erro no processo de baixar e imprimir: {e}")
+            self._logger.error(f"Erro crítico ao baixar e imprimir: {e}")
 
     def on_shutdown(self):
         if self._timer:
