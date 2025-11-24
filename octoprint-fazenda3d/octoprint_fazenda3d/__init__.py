@@ -129,35 +129,24 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         token = self._settings.get(["token"]) 
         nome = self._settings.get(["nome_impressora"])
         
-        if not servidor_url or not token:
-            return
+        if not servidor_url or not token: return
         
-        # --- 1. COLETAR DADOS DA IMPRESSORA ---
+        # 1. COLETAR DADOS (Igual ao anterior)
         state = self._printer.get_state_id()
         temps = self._printer.get_current_temperatures()
+        webcam_url = self._settings.global_get(["webcam", "streamUrl"]) or ""
         
-        # Tenta pegar o nome do arquivo sendo impresso (Job Name)
         job_name = None
         try:
             job_data = self._printer.get_current_job()
             if job_data and "job" in job_data and "file" in job_data["job"]:
                 job_name = job_data["job"]["file"]["name"]
-        except:
-            pass
+        except: pass
             
-        # Tenta pegar o progresso (0-100%)
         try:
             progress = self._printer.get_current_data()["progress"]["completion"]
-        except:
-            progress = None
+        except: progress = None
 
-        # --- NOVO: PEGAR A URL DA WEBCAM CONFIGURADA NO OCTOPRINT ---
-        # Isso lê o campo "Stream URL" nas configurações globais do OctoPrint
-        webcam_url = self._settings.global_get(["webcam", "streamUrl"])
-        if not webcam_url:
-            webcam_url = ""
-        # ------------------------------------------------------------
-            
         payload = {
             "token": token,
             "nome_impressora": nome,
@@ -165,33 +154,55 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             "temperaturas": temps,
             "progresso": progress,
             "arquivo_imprimindo": job_name,
-            "webcam_url": webcam_url  # <--- ENVIAMOS A URL AQUI
+            "webcam_url": webcam_url
         }
         
-        # --- 2. ENVIAR STATUS PARA O SERVIDOR ---
+        # 2. ENVIAR STATUS
         try:
             url_status = servidor_url.rstrip("/") + "/api/status"
             requests.post(url_status, json=payload, timeout=5)
         except Exception as e:
             self._logger.error(f"Erro ao enviar status: {e}")
 
-        # --- 3. VERIFICAR COMANDOS DE CONTROLE (PAUSE/CANCEL) ---
+        # --- 3. VERIFICAR E EXECUTAR COMANDOS (ATUALIZADO) ---
         try:
             url_cmd = servidor_url.rstrip("/") + "/api/printer/check_commands?token=" + token
             r = requests.get(url_cmd, timeout=5)
             if r.status_code == 200:
                 cmd = r.json().get("command")
-                if cmd == "pause":
-                    self._printer.pause_print()
-                    self._logger.info("Comando PAUSAR recebido do servidor.")
-                elif cmd == "resume":
-                    self._printer.resume_print()
-                    self._logger.info("Comando RESUMIR recebido do servidor.")
-                elif cmd == "cancel":
-                    self._printer.cancel_print()
-                    self._logger.info("Comando CANCELAR recebido do servidor.")
+                
+                if cmd:
+                    self._logger.info(f"Comando recebido do servidor: {cmd}")
+                    
+                    # Comandos de Sistema
+                    if cmd == "pause":
+                        self._printer.pause_print()
+                    elif cmd == "resume":
+                        self._printer.resume_print()
+                    elif cmd == "cancel":
+                        self._printer.cancel_print()
+                    
+                    # --- NOVO: Comandos G-Code ---
+                    else:
+                        # Se não for pause/cancel, envia como G-code para a impressora
+                        # Ex: "M104 S200", "G28", "G1 X10"
+                        self._printer.commands(cmd)
+                        
         except Exception as e:
             self._logger.error(f"Erro ao checar comandos: {e}")
+
+        # 4. VERIFICAR FILA (Igual ao anterior)
+        if self._printer.is_printing() or self._printer.is_paused():
+            return 
+
+        try:
+            url_fila = servidor_url.rstrip("/") + "/api/fila?token=" + token
+            resp = requests.get(url_fila, timeout=5)
+            if resp.status_code == 200:
+                obj = resp.json()
+                if obj.get("novo_arquivo"):
+                    self._baixar_e_imprimir(obj.get("arquivo_url"))
+        except Exception: pass
 
         # --- 4. VERIFICAR FILA (Apenas se NÃO estiver imprimindo) ---
         # Se estiver imprimindo ou pausado, não busca novos arquivos para economizar rede
