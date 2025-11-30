@@ -5,7 +5,7 @@ import threading
 import time
 import requests
 import flask
-import socketio # Biblioteca nova
+import socketio
 import octoprint.plugin
 import octoprint.util
 import octoprint.filemanager.destinations
@@ -20,14 +20,15 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
     def __init__(self):
         super(Fazenda3DPlugin, self).__init__()
         self._timer = None
-        self.sio = None # Cliente SocketIO
+        self.sio = None
         self.streaming = False
         self.stream_thread = None
+        self._shutdown_signal = False # Flag para saber quando parar
 
     def on_after_startup(self):
         self._logger.info("Fazenda3DPlugin: Iniciando serviços...")
         
-        # 1. Inicia o Loop de Status (HTTP - Mantemos para compatibilidade)
+        # 1. Inicia o Loop de Status (HTTP - Mantido para compatibilidade)
         interval = 5.0
         self._timer = octoprint.util.RepeatedTimer(interval, self._loop_status)
         self._timer.start()
@@ -36,28 +37,34 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         self.connect_socket()
 
     def connect_socket(self):
-        # Roda em thread separada para não travar o boot do OctoPrint
         t = threading.Thread(target=self._socket_worker)
-        t.daemon = True
+        t.daemon = True # Importante: Se o OctoPrint fechar, essa thread morre junto
         t.start()
 
     def _socket_worker(self):
         server_url = self._settings.get(["servidor_url"])
+        
+        # Se não tiver URL configurada, nem tenta
         if not server_url:
+            self._logger.info("WS: URL do servidor não configurada. WebSockets desativado.")
             return
 
         self.sio = socketio.Client()
 
+        # --- DEFINIÇÃO DOS EVENTOS ---
         @self.sio.on('connect')
         def on_connect():
             self._logger.info("WS: Conectado ao Servidor na Nuvem!")
             token = self._settings.get(["token"])
-            # Autentica entrando na sala
             self.sio.emit('printer_connect', {'token': token})
+
+        @self.sio.on('disconnect')
+        def on_disconnect():
+            self._logger.info("WS: Desconectado do servidor.")
+            self.streaming = False
 
         @self.sio.on('execute_command')
         def on_command(data):
-            # Recebe comando instantâneo (G-code, Pause, etc)
             cmd = data.get('cmd')
             self._logger.info(f"WS: Comando recebido: {cmd}")
             if cmd == 'pause': self._printer.pause_print()
@@ -79,20 +86,25 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             self._logger.info("WS: Servidor parou vídeo.")
             self.streaming = False
 
-        try:
-            # Conecta e fica esperando (wait)
-            self.sio.connect(server_url, namespaces=['/'])
-            self.sio.wait()
-        except Exception as e:
-            self._logger.error(f"WS: Erro de conexão socket: {e}")
-            # Tenta reconectar em 30s se cair
-            time.sleep(30)
-            self._socket_worker()
+        # --- LOOP DE CONEXÃO ROBUSTO (AQUI ESTÁ A CORREÇÃO) ---
+        while not self._shutdown_signal:
+            try:
+                if not self.sio.connected:
+                    self._logger.info(f"WS: Tentando conectar a {server_url}...")
+                    # Tenta conectar. Se falhar, vai pular pro 'except'
+                    self.sio.connect(server_url, namespaces=['/'])
+                    self.sio.wait() # Fica aqui bloqueado enquanto estiver conectado
+                else:
+                    time.sleep(1)
+            except Exception as e:
+                # Se der erro (servidor offline), NÃO CRASHA O PLUGIN.
+                # Apenas avisa no log e espera 30 segundos.
+                self._logger.warning(f"WS: Falha na conexão (Servidor Offline?). Tentando em 30s. Erro: {e}")
+                self.streaming = False # Garante que para de tentar enviar vídeo
+                time.sleep(30)
 
     def _video_stream_loop(self):
         """Captura MJPEG local e envia quadros via Socket"""
-        # URL Local da câmera (Onde o mjpg_streamer está rodando NA MÁQUINA)
-        # Se for OctoPi padrão: http://127.0.0.1:8080/?action=stream
         local_stream_url = "http://127.0.0.1:8080/?action=stream"
         token = self._settings.get(["token"])
 
@@ -101,12 +113,9 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             bytes_buffer = bytes()
 
             for chunk in stream.iter_content(chunk_size=1024):
-                if not self.streaming:
-                    break # Para o loop se o servidor mandar parar
+                if not self.streaming: break
                 
                 bytes_buffer += chunk
-                
-                # Procura início (0xff 0xd8) e fim (0xff 0xd9) do JPEG
                 a = bytes_buffer.find(b'\xff\xd8')
                 b = bytes_buffer.find(b'\xff\xd9')
                 
@@ -114,19 +123,19 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     jpg = bytes_buffer[a:b+2]
                     bytes_buffer = bytes_buffer[b+2:]
                     
-                    # Envia o quadro para a nuvem
-                    # Emitir binary data via socketio é eficiente
                     if self.sio and self.sio.connected:
-                        self.sio.emit('video_frame', {'token': token, 'image': jpg})
-                        # Pequeno delay para controlar FPS (opcional, 0.1 = 10fps)
-                        time.sleep(0.05) 
+                        try:
+                            self.sio.emit('video_frame', {'token': token, 'image': jpg})
+                            time.sleep(0.05) 
+                        except Exception:
+                            # Se falhar o envio, encerra o loop de vídeo para não travar
+                            break
                         
         except Exception as e:
             self._logger.error(f"WS: Erro no loop de vídeo: {e}")
             self.streaming = False
 
-    # ... (MANTENHA AS OUTRAS FUNÇÕES: get_settings_defaults, _loop_status, ETC) ...
-    # ... (Elas são necessárias para o sistema funcionar enquanto o socket conecta) ...
+    # --- FUNÇÕES PADRÃO DO OCTOPRINT ---
     
     def get_settings_defaults(self):
         return dict(servidor_url="", token="", nome_impressora="")
@@ -138,22 +147,84 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         return [dict(type="settings", custom_bindings=False)]
 
     def _loop_status(self):
-        # MANTENHA A SUA FUNÇÃO _loop_status ATUAL AQUI
-        # Ela ainda é útil para atualizar temperaturas no banco de dados
-        # e baixar arquivos (download via HTTP é mais robusto que via socket para arquivos grandes)
-        pass 
+        # MANTEMOS O LOOP HTTP COMO BACKUP E PARA DADOS LENTOS
+        servidor_url = self._settings.get(["servidor_url"])
+        token = self._settings.get(["token"]) 
+        if not servidor_url or not token: return
+        
+        try:
+            # Coleta dados simples para atualizar o banco
+            state = self._printer.get_state_id()
+            temps = self._printer.get_current_temperatures()
+            webcam_url = self._settings.global_get(["webcam", "streamUrl"]) or ""
+            
+            job_name = None
+            try:
+                job_data = self._printer.get_current_job()
+                if job_data and "job" in job_data and "file" in job_data["job"]:
+                    job_name = job_data["job"]["file"]["name"]
+            except: pass
+            
+            payload = {
+                "token": token,
+                "nome_impressora": self._settings.get(["nome_impressora"]),
+                "estado": state,
+                "temperaturas": temps,
+                "arquivo_imprimindo": job_name,
+                "webcam_url": webcam_url
+            }
+            
+            # Envia via HTTP (polling lento) apenas para garantir atualização do banco
+            url_status = servidor_url.rstrip("/") + "/api/status"
+            requests.post(url_status, json=payload, timeout=2) # Timeout curto para não travar
+            
+            # Verificação de arquivos na fila via HTTP (Download é melhor via HTTP)
+            if not self._printer.is_printing() and not self._printer.is_paused():
+                url_fila = servidor_url.rstrip("/") + "/api/fila?token=" + token
+                resp = requests.get(url_fila, timeout=2)
+                if resp.status_code == 200:
+                    obj = resp.json()
+                    if obj.get("novo_arquivo"):
+                        self._baixar_e_imprimir(obj.get("arquivo_url"))
 
-    # Mantenha o método _baixar_e_imprimir que corrigimos antes
+        except Exception:
+            # Se der erro no HTTP, apenas ignora silenciosamente
+            # (O Log já vai estar cheio de avisos do Socket, não precisamos spammar aqui)
+            pass
+
     def _baixar_e_imprimir(self, arquivo_url):
-         # ... (seu código atual de download) ...
-         pass
+        self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
+        try:
+            import urllib.parse
+            uploads_folder = self._settings.global_get(["folder", "uploads"])
+            if not uploads_folder: uploads_folder = os.path.expanduser("~/.octoprint/uploads")
+            if not os.path.exists(uploads_folder): os.makedirs(uploads_folder)
+
+            raw_filename = os.path.basename(urllib.parse.unquote(arquivo_url))
+            filename = "".join(x for x in raw_filename if (x.isalnum() or x in "._- "))
+            file_path = os.path.join(uploads_folder, filename)
+
+            r = requests.get(arquivo_url, stream=True, timeout=60)
+            r.raise_for_status()
+
+            with open(file_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024 * 8): 
+                    if chunk: f.write(chunk)
+            
+            self._printer.select_file(filename, False, printAfterSelect=True)
+            self._logger.info(f"Fazenda3D: Impressão iniciada: {filename}")
+        except Exception as e:
+            self._logger.error(f"Fazenda3D: Erro no download: {e}")
 
     def on_shutdown(self):
+        self._shutdown_signal = True # Avisa o loop para parar
         if self._timer: self._timer.cancel()
-        if self.sio: self.sio.disconnect()
+        if self.sio: 
+            try: self.sio.disconnect()
+            except: pass
 
-__plugin_name__ = "Fazenda 3D Cloud"
-__plugin_version__ = "0.2.0"
-__plugin_description__ = "Versão Cloud com WebSockets"
+__plugin_name__ = "Fazenda 3D"
+__plugin_version__ = "0.2.1"
+__plugin_description__ = "Versão Cloud Resiliente"
 __plugin_pythoncompat__ = ">=3,<4"
 __plugin_implementation__ = Fazenda3DPlugin()
