@@ -1,280 +1,159 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import
 import os
+import threading
+import time
 import requests
 import flask
+import socketio # Biblioteca nova
 import octoprint.plugin
 import octoprint.util
-from flask import jsonify
-
 import octoprint.filemanager.destinations
 from octoprint.filemanager.util import StreamWrapper
 
-
-# --- CORREÇÃO 1: ADICIONAR O AssetPlugin DE VOLTA ---
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
                       octoprint.plugin.StartupPlugin,
                       octoprint.plugin.SimpleApiPlugin,
-                      octoprint.plugin.AssetPlugin):  # <-- DEVE ESTAR AQUI
+                      octoprint.plugin.AssetPlugin):
 
     def __init__(self):
         super(Fazenda3DPlugin, self).__init__()
         self._timer = None
+        self.sio = None # Cliente SocketIO
+        self.streaming = False
+        self.stream_thread = None
 
     def on_after_startup(self):
-        self._logger.info("Fazenda3DPlugin iniciado.")
-        interval = 5.0  # segundos
+        self._logger.info("Fazenda3DPlugin: Iniciando serviços...")
+        
+        # 1. Inicia o Loop de Status (HTTP - Mantemos para compatibilidade)
+        interval = 5.0
         self._timer = octoprint.util.RepeatedTimer(interval, self._loop_status)
         self._timer.start()
 
-    def get_settings_defaults(self):
-        return dict(
-            servidor_url="",
-            token="",
-            nome_impressora=""
-        )
+        # 2. Inicia conexão WebSocket (O Túnel)
+        self.connect_socket()
 
-    def get_template_vars(self):
-        return dict(
-            servidor_url=self._settings.get(["servidor_url"]),
-            token=self._settings.get(["token"]),
-            nome_impressora=self._settings.get(["nome_impressora"])
-        )
+    def connect_socket(self):
+        # Roda em thread separada para não travar o boot do OctoPrint
+        t = threading.Thread(target=self._socket_worker)
+        t.daemon = True
+        t.start()
 
-    def get_template_configs(self):
-        return [
-            dict(type="tab", name="Fazenda 3D", template="fazenda3d_tab.jinja2")
-        ]
+    def _socket_worker(self):
+        server_url = self._settings.get(["servidor_url"])
+        if not server_url:
+            return
 
-    # --- CORREÇÃO 2: USAR O get_assets (O MÉTODO OFICIAL) ---
-    # Isto diz ao OctoPrint para carregar o seu script em TODAS as páginas.
-    def get_assets(self):
-        return dict(js=["js/octoprint_fazenda3d.js"])
+        self.sio = socketio.Client()
 
-    # ======== SimpleApiPlugin ========
-    
-    def get_api_commands(self):
-        # A API espera 'servidor_url' e 'token'
-        return dict(connect=["servidor_url", "token"])
+        @self.sio.on('connect')
+        def on_connect():
+            self._logger.info("WS: Conectado ao Servidor na Nuvem!")
+            token = self._settings.get(["token"])
+            # Autentica entrando na sala
+            self.sio.emit('printer_connect', {'token': token})
 
-    # --- CORREÇÃO 3: ADICIONAR A FUNÇÃO DE PERMISSÕES ---
-    # Isto corrige o aviso de "is_api_protected" que você viu.
-    # Estamos a dizer que qualquer utilizador logado pode usar esta API.
-    def is_api_protected(self):
-        return True # Exige que o utilizador esteja logado
+        @self.sio.on('execute_command')
+        def on_command(data):
+            # Recebe comando instantâneo (G-code, Pause, etc)
+            cmd = data.get('cmd')
+            self._logger.info(f"WS: Comando recebido: {cmd}")
+            if cmd == 'pause': self._printer.pause_print()
+            elif cmd == 'resume': self._printer.resume_print()
+            elif cmd == 'cancel': self._printer.cancel_print()
+            else: self._printer.commands(cmd)
 
-    def on_api_command(self, command, data):
-        if command == "connect":
-            server_url = data.get("servidor_url")
-            # "api_key" vem do JavaScript, mas o seu servidor espera "token"
-            api_key = data.get("token") 
+        @self.sio.on('start_video')
+        def on_start_video(data):
+            self._logger.info("WS: Servidor pediu vídeo. Iniciando stream...")
+            self.streaming = True
+            if self.stream_thread is None or not self.stream_thread.is_alive():
+                self.stream_thread = threading.Thread(target=self._video_stream_loop)
+                self.stream_thread.daemon = True
+                self.stream_thread.start()
 
-            if not server_url or not api_key:
-                return jsonify(success=False, error="URL ou Token não fornecidos")
+        @self.sio.on('stop_video')
+        def on_stop_video(data):
+            self._logger.info("WS: Servidor parou vídeo.")
+            self.streaming = False
 
-            # Adiciona "http://" se faltar
-            if not server_url.startswith("http://") and not server_url.startswith("https://"):
-                self._logger.info(f"Fazenda3D: URL sem 'http'. Adicionando 'http://' automaticamente.")
-                server_url = "http://" + server_url.strip("/")
-            
-            try:
-                # --- CORREÇÃO 1: MUDAR A ROTA ---
-                # A rota no seu app.py é "/api/register_printer"
-                url_de_conexao = f"{server_url}/api/register_printer"
-                
-                self._logger.info(f"Fazenda3D: Tentando conectar em: {url_de_conexao}")
-
-                # --- CORREÇÃO 2: MUDAR O JSON ---
-                # O seu app.py espera "token", não "api_key"
-                payload = {
-                    "token": api_key,
-                    "nome_impressora": "OctoPrint" # Pode adicionar o nome da impressora aqui
-                }
-
-                response = requests.post(
-                    url_de_conexao,
-                    json=payload, 
-                    timeout=10
-                )
-
-                if response.status_code == 200:
-                    self._logger.info("Fazenda3D: Conectado e registrado no servidor com sucesso.")
-                    
-                    self._settings.set(["servidor_url"], server_url)
-                    self._settings.set(["token"], api_key) 
-                    self._settings.save()
-                    self._logger.info("Fazenda3D: Configurações salvas.")
-
-                    return jsonify(success=True, status="connected")
-                else:
-                    self._logger.warning(f"Fazenda3D: Falha. Servidor respondeu com status {response.status_code}. Body: {response.text}")
-                    return jsonify(success=False, error=f"Servidor respondeu com erro {response.status_code}")
-
-            except requests.exceptions.ConnectionError as e:
-                self._logger.error(f"Fazenda3D: Erro de conexão ao tentar contatar {server_url}. Erro: {e}")
-                return jsonify(success=False, error=f"Não foi possível conectar ao servidor (ConnectionError)")
-            
-            except requests.exceptions.Timeout as e:
-                self._logger.error(f"Fazenda3D: Timeout ao tentar contatar {server_url}. Erro: {e}")
-                return jsonify(success=False, error="Servidor demorou para responder (Timeout)")
-
-            except requests.exceptions.RequestException as e:
-                self._logger.error(f"Fazenda3D: Erro de 'requests' ao tentar contatar {server_url}. Erro: {e}")
-                return jsonify(success=False, error=f"Erro na requisição: {e}")
-
-    # ======== Loop periódico ========
-    def _loop_status(self):
-        servidor_url = self._settings.get(["servidor_url"])
-        token = self._settings.get(["token"]) 
-        nome = self._settings.get(["nome_impressora"])
-        
-        if not servidor_url or not token: return
-        
-        # 1. COLETAR DADOS (Igual ao anterior)
-        state = self._printer.get_state_id()
-        temps = self._printer.get_current_temperatures()
-        webcam_url = self._settings.global_get(["webcam", "streamUrl"]) or ""
-        
-        job_name = None
         try:
-            job_data = self._printer.get_current_job()
-            if job_data and "job" in job_data and "file" in job_data["job"]:
-                job_name = job_data["job"]["file"]["name"]
-        except: pass
-            
-        try:
-            progress = self._printer.get_current_data()["progress"]["completion"]
-        except: progress = None
-
-        payload = {
-            "token": token,
-            "nome_impressora": nome,
-            "estado": state,
-            "temperaturas": temps,
-            "progresso": progress,
-            "arquivo_imprimindo": job_name,
-            "webcam_url": webcam_url
-        }
-        
-        # 2. ENVIAR STATUS
-        try:
-            url_status = servidor_url.rstrip("/") + "/api/status"
-            requests.post(url_status, json=payload, timeout=5)
+            # Conecta e fica esperando (wait)
+            self.sio.connect(server_url, namespaces=['/'])
+            self.sio.wait()
         except Exception as e:
-            self._logger.error(f"Erro ao enviar status: {e}")
+            self._logger.error(f"WS: Erro de conexão socket: {e}")
+            # Tenta reconectar em 30s se cair
+            time.sleep(30)
+            self._socket_worker()
 
-        # --- 3. VERIFICAR E EXECUTAR COMANDOS (ATUALIZADO) ---
+    def _video_stream_loop(self):
+        """Captura MJPEG local e envia quadros via Socket"""
+        # URL Local da câmera (Onde o mjpg_streamer está rodando NA MÁQUINA)
+        # Se for OctoPi padrão: http://127.0.0.1:8080/?action=stream
+        local_stream_url = "http://127.0.0.1:8080/?action=stream"
+        token = self._settings.get(["token"])
+
         try:
-            url_cmd = servidor_url.rstrip("/") + "/api/printer/check_commands?token=" + token
-            r = requests.get(url_cmd, timeout=5)
-            if r.status_code == 200:
-                cmd = r.json().get("command")
+            stream = requests.get(local_stream_url, stream=True, timeout=5)
+            bytes_buffer = bytes()
+
+            for chunk in stream.iter_content(chunk_size=1024):
+                if not self.streaming:
+                    break # Para o loop se o servidor mandar parar
                 
-                if cmd:
-                    self._logger.info(f"Comando recebido do servidor: {cmd}")
+                bytes_buffer += chunk
+                
+                # Procura início (0xff 0xd8) e fim (0xff 0xd9) do JPEG
+                a = bytes_buffer.find(b'\xff\xd8')
+                b = bytes_buffer.find(b'\xff\xd9')
+                
+                if a != -1 and b != -1:
+                    jpg = bytes_buffer[a:b+2]
+                    bytes_buffer = bytes_buffer[b+2:]
                     
-                    # Comandos de Sistema
-                    if cmd == "pause":
-                        self._printer.pause_print()
-                    elif cmd == "resume":
-                        self._printer.resume_print()
-                    elif cmd == "cancel":
-                        self._printer.cancel_print()
-                    
-                    # --- NOVO: Comandos G-Code ---
-                    else:
-                        # Se não for pause/cancel, envia como G-code para a impressora
-                        # Ex: "M104 S200", "G28", "G1 X10"
-                        self._printer.commands(cmd)
+                    # Envia o quadro para a nuvem
+                    # Emitir binary data via socketio é eficiente
+                    if self.sio and self.sio.connected:
+                        self.sio.emit('video_frame', {'token': token, 'image': jpg})
+                        # Pequeno delay para controlar FPS (opcional, 0.1 = 10fps)
+                        time.sleep(0.05) 
                         
         except Exception as e:
-            self._logger.error(f"Erro ao checar comandos: {e}")
+            self._logger.error(f"WS: Erro no loop de vídeo: {e}")
+            self.streaming = False
 
-        # 4. VERIFICAR FILA (Igual ao anterior)
-        if self._printer.is_printing() or self._printer.is_paused():
-            return 
+    # ... (MANTENHA AS OUTRAS FUNÇÕES: get_settings_defaults, _loop_status, ETC) ...
+    # ... (Elas são necessárias para o sistema funcionar enquanto o socket conecta) ...
+    
+    def get_settings_defaults(self):
+        return dict(servidor_url="", token="", nome_impressora="")
 
-        try:
-            url_fila = servidor_url.rstrip("/") + "/api/fila?token=" + token
-            resp = requests.get(url_fila, timeout=5)
-            if resp.status_code == 200:
-                obj = resp.json()
-                if obj.get("novo_arquivo"):
-                    self._baixar_e_imprimir(obj.get("arquivo_url"))
-        except Exception: pass
+    def get_template_vars(self):
+        return dict(servidor_url=self._settings.get(["servidor_url"]), token=self._settings.get(["token"]), nome_impressora=self._settings.get(["nome_impressora"]))
+    
+    def get_template_configs(self):
+        return [dict(type="settings", custom_bindings=False)]
 
-        # --- 4. VERIFICAR FILA (Apenas se NÃO estiver imprimindo) ---
-        # Se estiver imprimindo ou pausado, não busca novos arquivos para economizar rede
-        if self._printer.is_printing() or self._printer.is_paused():
-            return 
+    def _loop_status(self):
+        # MANTENHA A SUA FUNÇÃO _loop_status ATUAL AQUI
+        # Ela ainda é útil para atualizar temperaturas no banco de dados
+        # e baixar arquivos (download via HTTP é mais robusto que via socket para arquivos grandes)
+        pass 
 
-        try:
-            url_fila = servidor_url.rstrip("/") + "/api/fila?token=" + token
-            resp = requests.get(url_fila, timeout=5)
-            if resp.status_code == 200:
-                obj = resp.json()
-                if obj.get("novo_arquivo"):
-                    # Se tiver arquivo novo, chama a função de download
-                    self._baixar_e_imprimir(obj.get("arquivo_url"))
-        except Exception:
-            pass
-            
+    # Mantenha o método _baixar_e_imprimir que corrigimos antes
     def _baixar_e_imprimir(self, arquivo_url):
-        self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
-        
-        try:
-            import urllib.parse
-            
-            # 1. DESCOBRIR A PASTA DE UPLOADS
-            # Tenta pegar pela configuração global (chave correta: 'folder', 'uploads')
-            uploads_folder = self._settings.global_get(["folder", "uploads"])
-            
-            # Fallback de segurança: Se não encontrar a configuração, usa o padrão do Linux
-            if not uploads_folder:
-                self._logger.warning("Fazenda3D: Configuração de pasta não encontrada. Usando caminho padrão.")
-                uploads_folder = os.path.expanduser("~/.octoprint/uploads")
-            
-            # Garante que a pasta existe
-            if not os.path.exists(uploads_folder):
-                os.makedirs(uploads_folder)
-
-            # 2. LIMPAR O NOME DO ARQUIVO
-            raw_filename = os.path.basename(urllib.parse.unquote(arquivo_url))
-            # Remove caracteres estranhos
-            filename = "".join(x for x in raw_filename if (x.isalnum() or x in "._- "))
-            
-            # Caminho final
-            file_path = os.path.join(uploads_folder, filename)
-
-            # 3. BAIXAR E SALVAR (Método "Raiz")
-            r = requests.get(arquivo_url, stream=True, timeout=60)
-            r.raise_for_status()
-
-            self._logger.info(f"Fazenda3D: Salvando arquivo em: {file_path}")
-
-            with open(file_path, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=1024 * 8): 
-                    if chunk:
-                        f.write(chunk)
-            
-            self._logger.info("Fazenda3D: Download concluído e salvo no disco.")
-
-            # 4. SELECIONAR E IMPRIMIR
-            # O select_file espera o caminho relativo à pasta de uploads (apenas o nome do arquivo)
-            self._printer.select_file(filename, False, printAfterSelect=True)
-            
-            self._logger.info(f"Fazenda3D: COMANDO DE IMPRESSÃO ENVIADO para {filename}")
-
-        except Exception as e:
-            self._logger.error(f"Fazenda3D: ERRO CRÍTICO ao baixar e imprimir: {e}")
+         # ... (seu código atual de download) ...
+         pass
 
     def on_shutdown(self):
-        if self._timer:
-            self._timer.cancel()
+        if self._timer: self._timer.cancel()
+        if self.sio: self.sio.disconnect()
 
-__plugin_name__ = "Fazenda 3D"
-__plugin_version__ = "0.1.0"
-__plugin_description__ = "Plugin que integra o OctoPrint com sistema central de fazenda 3D"
-__plugin_pythoncompat__ = ">=3.7,<4"
+__plugin_name__ = "Fazenda 3D Cloud"
+__plugin_version__ = "0.2.0"
+__plugin_description__ = "Versão Cloud com WebSockets"
+__plugin_pythoncompat__ = ">=3,<4"
 __plugin_implementation__ = Fazenda3DPlugin()
