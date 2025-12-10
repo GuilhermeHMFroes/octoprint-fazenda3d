@@ -49,7 +49,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
     # --- RESTAURADO: Arquivos JS e CSS ---
     def get_assets(self):
         return dict(
-            js=["js/fazenda3d.js"], 
+            js=["js/octoprint_fazenda3d.js"], 
             css=["css/fazenda3d.css"]
         )
 
