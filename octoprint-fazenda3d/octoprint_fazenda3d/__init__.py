@@ -25,57 +25,60 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         self.stream_thread = None
         self._shutdown_signal = False 
 
-    # --- 1. CONFIGURAÇÃO DE SEGURANÇA (Resolve o WARNING do log) ---
+    # --- SEGURANÇA ---
     def is_api_protected(self):
-        # Retorna False para permitir que o JS acesse sem autenticação complexa (padrão antigo)
-        # Se quiser bloquear para usuários não logados, mude para True
         return False
 
-    # --- 2. COMANDOS PERMITIDOS (Resolve o erro 400/405) ---
+    # --- COMANDOS PERMITIDOS ---
     def get_api_commands(self):
-        # O erro 400 acontece se o JS envia um comando que NÃO está nesta lista.
-        # Estou adicionando vários nomes comuns para garantir.
         return dict(
+            connect=["servidor_url", "token"], # O JS manda esses dados
             testar=[],   
             ping=[],     
-            save=[],     
-            update=[],
-            check=[],
-            connect=[],
-            status=[]
+            save=[],
+            update=[]
         )
 
+    # --- AQUI ESTAVA O PROBLEMA: AGORA VAMOS SALVAR ---
     def on_api_command(self, command, data):
-        # Esta função só roda se o 'command' estiver na lista acima
         self._logger.info(f"API Fazenda3D: Comando recebido -> {command}")
         
-        if command == "ping":
-            return jsonify(success=True, msg="Pong!")
-        
-        if command == "testar":
-            # Exemplo: Testar conexão com o servidor Cloudflare
-            url = data.get("url") or self._settings.get(["servidor_url"])
-            if not url:
-                return jsonify(success=False, msg="URL Vazia")
-            return jsonify(success=True, msg=f"Testando {url}...")
+        if command == "connect":
+            # 1. PEGAR OS DADOS QUE O JS MANDOU
+            url_nova = data.get("servidor_url")
+            token_novo = data.get("token")
 
-        # Retorno padrão para qualquer outro comando
+            # 2. SALVAR NO CONFIG.YAML (Isso faltava!)
+            if url_nova:
+                self._settings.set(["servidor_url"], url_nova)
+            if token_novo:
+                self._settings.set(["token"], token_novo)
+            
+            # Força a gravação no disco agora
+            self._settings.save()
+            self._logger.info(f"Configurações SALVAS via API: {url_nova}")
+
+            # 3. TENTAR RECONECTAR O SOCKET IMEDIATAMENTE
+            # Desconecta o atual se existir
+            if self.sio and self.sio.connected:
+                self.sio.disconnect()
+            
+            return jsonify(success=True, msg="Configurações salvas! Conectando...")
+        
+        elif command == "ping":
+            return jsonify(success=True, msg="Pong!")
+
         return jsonify(success=True)
 
-    # --- 3. INICIALIZAÇÃO E SOCKETS ---
+    # --- INICIALIZAÇÃO ---
     def on_after_startup(self):
         self._logger.info("Fazenda3DPlugin: Iniciando serviços...")
-        
-        # Inicia Loop de Status (HTTP)
         interval = 5.0
         self._timer = octoprint.util.RepeatedTimer(interval, self._loop_status)
         self._timer.start()
-
-        # Inicia WebSockets
         self.connect_socket()
 
     def get_assets(self):
-        # Certifique-se que o arquivo JS na pasta static tem EXATAMENTE este nome
         return dict(
             js=["js/octoprint_fazenda3d.js"], 
             css=["css/fazenda3d.css"]
@@ -83,70 +86,70 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
     def get_template_configs(self):
         return [
-            # Aba Principal
             dict(type="tab", name="Fazenda 3D", template="fazenda3d_tab.jinja2"),
-            # Menu de Configurações (Essencial para o botão Save funcionar)
             dict(type="settings", custom_bindings=False)
         ]
 
-    # ... (O RESTO DO CÓDIGO PERMANECE IGUAL PARA BAIXO) ...
-
+    # --- SOCKETS ---
     def connect_socket(self):
         t = threading.Thread(target=self._socket_worker)
         t.daemon = True 
         t.start()
 
     def _socket_worker(self):
-        server_url = self._settings.get(["servidor_url"])
+        # Pequeno delay inicial para garantir que settings carregaram
+        time.sleep(2)
         
-        if not server_url:
-            self._logger.info("WS: URL do servidor não configurada. Aguardando configuração...")
-            return
-
-        self.sio = socketio.Client()
-
-        @self.sio.on('connect')
-        def on_connect():
-            self._logger.info("WS: Conectado ao Servidor na Nuvem!")
-            token = self._settings.get(["token"])
-            self.sio.emit('printer_connect', {'token': token})
-
-        @self.sio.on('disconnect')
-        def on_disconnect():
-            self._logger.info("WS: Desconectado do servidor.")
-            self.streaming = False
-
-        @self.sio.on('execute_command')
-        def on_command(data):
-            cmd = data.get('cmd')
-            self._logger.info(f"WS: Comando recebido: {cmd}")
-            if cmd == 'pause': self._printer.pause_print()
-            elif cmd == 'resume': self._printer.resume_print()
-            elif cmd == 'cancel': self._printer.cancel_print()
-            else: self._printer.commands(cmd)
-
-        @self.sio.on('start_video')
-        def on_start_video(data):
-            self._logger.info("WS: Servidor pediu vídeo. Iniciando stream...")
-            self.streaming = True
-            if self.stream_thread is None or not self.stream_thread.is_alive():
-                self.stream_thread = threading.Thread(target=self._video_stream_loop)
-                self.stream_thread.daemon = True
-                self.stream_thread.start()
-
-        @self.sio.on('stop_video')
-        def on_stop_video(data):
-            self._logger.info("WS: Servidor parou vídeo.")
-            self.streaming = False
-
         while not self._shutdown_signal:
-            try:
-                # Recarrega a URL caso o usuário tenha mudado nas configurações
-                current_url = self._settings.get(["servidor_url"])
+            server_url = self._settings.get(["servidor_url"])
+            
+            # Se não tiver URL, espera um pouco e tenta ler de novo (caso o usuário tenha acabado de salvar)
+            if not server_url:
+                time.sleep(5)
+                continue
+
+            if self.sio is None:
+                self.sio = socketio.Client()
                 
-                if current_url and (not self.sio.connected):
-                    self._logger.info(f"WS: Tentando conectar a {current_url}...")
-                    self.sio.connect(current_url, namespaces=['/'])
+                # --- EVENTOS ---
+                @self.sio.on('connect')
+                def on_connect():
+                    self._logger.info("WS: Conectado ao Servidor na Nuvem!")
+                    token = self._settings.get(["token"])
+                    self.sio.emit('printer_connect', {'token': token})
+
+                @self.sio.on('disconnect')
+                def on_disconnect():
+                    self._logger.info("WS: Desconectado do servidor.")
+                    self.streaming = False
+
+                @self.sio.on('execute_command')
+                def on_command(data):
+                    cmd = data.get('cmd')
+                    self._logger.info(f"WS: Comando recebido: {cmd}")
+                    if cmd == 'pause': self._printer.pause_print()
+                    elif cmd == 'resume': self._printer.resume_print()
+                    elif cmd == 'cancel': self._printer.cancel_print()
+                    else: self._printer.commands(cmd)
+
+                @self.sio.on('start_video')
+                def on_start_video(data):
+                    self._logger.info("WS: Servidor pediu vídeo. Iniciando stream...")
+                    self.streaming = True
+                    if self.stream_thread is None or not self.stream_thread.is_alive():
+                        self.stream_thread = threading.Thread(target=self._video_stream_loop)
+                        self.stream_thread.daemon = True
+                        self.stream_thread.start()
+
+                @self.sio.on('stop_video')
+                def on_stop_video(data):
+                    self._logger.info("WS: Servidor parou vídeo.")
+                    self.streaming = False
+
+            try:
+                if not self.sio.connected:
+                    self._logger.info(f"WS: Tentando conectar a {server_url}...")
+                    self.sio.connect(server_url, namespaces=['/'])
                     self.sio.wait()
                 else:
                     time.sleep(2)
