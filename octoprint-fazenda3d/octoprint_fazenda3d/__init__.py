@@ -25,6 +25,33 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         self.stream_thread = None
         self._shutdown_signal = False 
 
+    # --- NOVO: CONFIGURAÇÃO DA API (Resolve o erro 405) ---
+    
+    def get_api_commands(self):
+        # Aqui você diz ao OctoPrint quais comandos o seu JS pode enviar.
+        # Se você não souber o nome exato que está no JS, libere alguns comuns:
+        return dict(
+            testar=[],   # Comando 'testar' sem argumentos
+            ping=[],     # Comando 'ping'
+            save=[],     # Comando 'save'
+            update=[]    # Comando 'update'
+        )
+
+    def on_api_command(self, command, data):
+        
+        self._logger.info(f"API Fazenda3D: Comando recebido -> {command}")
+        
+        # Responde "Sucesso" para o JS não ficar reclamando
+        if command == "testar":
+            return flask.jsonify(success=True, msg="Conexão OK!")
+        
+        elif command == "ping":
+            return flask.jsonify(success=True, msg="Pong!")
+
+        # Se for qualquer outro comando, apenas aceita silenciosamente
+        return flask.jsonify(success=True)
+    # ------------------------------------------------------
+
     def on_after_startup(self):
         self._logger.info("Fazenda3DPlugin: Iniciando serviços...")
         
