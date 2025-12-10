@@ -43,7 +43,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             dict(type="tab", name="Fazenda 3D", template="fazenda3d_tab.jinja2"),
             
             # Se você tiver configurações no menu também, pode manter essa linha abaixo:
-            # dict(type="settings", custom_bindings=False)
+            dict(type="settings", custom_bindings=False)
         ]
 
     # --- RESTAURADO: Arquivos JS e CSS ---
