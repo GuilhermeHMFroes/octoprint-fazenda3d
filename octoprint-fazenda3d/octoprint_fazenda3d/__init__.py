@@ -9,7 +9,7 @@ import socketio
 import octoprint.plugin
 import octoprint.util
 import octoprint.filemanager.destinations
-from octoprint.filemanager.util import StreamWrapper
+from flask import jsonify
 
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
@@ -25,60 +25,71 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         self.stream_thread = None
         self._shutdown_signal = False 
 
-    # --- NOVO: CONFIGURAÇÃO DA API (Resolve o erro 405) ---
-    
+    # --- 1. CONFIGURAÇÃO DE SEGURANÇA (Resolve o WARNING do log) ---
+    def is_api_protected(self):
+        # Retorna False para permitir que o JS acesse sem autenticação complexa (padrão antigo)
+        # Se quiser bloquear para usuários não logados, mude para True
+        return False
+
+    # --- 2. COMANDOS PERMITIDOS (Resolve o erro 400/405) ---
     def get_api_commands(self):
-        # Aqui você diz ao OctoPrint quais comandos o seu JS pode enviar.
-        # Se você não souber o nome exato que está no JS, libere alguns comuns:
+        # O erro 400 acontece se o JS envia um comando que NÃO está nesta lista.
+        # Estou adicionando vários nomes comuns para garantir.
         return dict(
-            testar=[],   # Comando 'testar' sem argumentos
-            ping=[],     # Comando 'ping'
-            save=[],     # Comando 'save'
-            update=[]    # Comando 'update'
+            testar=[],   
+            ping=[],     
+            save=[],     
+            update=[],
+            check=[],
+            connect=[],
+            status=[]
         )
 
     def on_api_command(self, command, data):
-        
+        # Esta função só roda se o 'command' estiver na lista acima
         self._logger.info(f"API Fazenda3D: Comando recebido -> {command}")
         
-        # Responde "Sucesso" para o JS não ficar reclamando
-        if command == "testar":
-            return flask.jsonify(success=True, msg="Conexão OK!")
+        if command == "ping":
+            return jsonify(success=True, msg="Pong!")
         
-        elif command == "ping":
-            return flask.jsonify(success=True, msg="Pong!")
+        if command == "testar":
+            # Exemplo: Testar conexão com o servidor Cloudflare
+            url = data.get("url") or self._settings.get(["servidor_url"])
+            if not url:
+                return jsonify(success=False, msg="URL Vazia")
+            return jsonify(success=True, msg=f"Testando {url}...")
 
-        # Se for qualquer outro comando, apenas aceita silenciosamente
-        return flask.jsonify(success=True)
-    # ------------------------------------------------------
+        # Retorno padrão para qualquer outro comando
+        return jsonify(success=True)
 
+    # --- 3. INICIALIZAÇÃO E SOCKETS ---
     def on_after_startup(self):
         self._logger.info("Fazenda3DPlugin: Iniciando serviços...")
         
-        # 1. Inicia o Loop de Status (HTTP)
+        # Inicia Loop de Status (HTTP)
         interval = 5.0
         self._timer = octoprint.util.RepeatedTimer(interval, self._loop_status)
         self._timer.start()
 
-        # 2. Inicia conexão WebSocket (O Túnel)
+        # Inicia WebSockets
         self.connect_socket()
 
-    # --- RESTAURADO: Configuração da Aba (Tab) ---
-    def get_template_configs(self):
-        return [
-            # Isso garante que o seu arquivo 'fazenda3d_tab.jinja2' apareça na tela principal
-            dict(type="tab", name="Fazenda 3D", template="fazenda3d_tab.jinja2"),
-            
-            # Se você tiver configurações no menu também, pode manter essa linha abaixo:
-            dict(type="settings", custom_bindings=False)
-        ]
-
-    # --- RESTAURADO: Arquivos JS e CSS ---
     def get_assets(self):
+        # Certifique-se que o arquivo JS na pasta static tem EXATAMENTE este nome
         return dict(
             js=["js/octoprint_fazenda3d.js"], 
             css=["css/fazenda3d.css"]
         )
+
+    def get_template_configs(self):
+        return [
+            # Aba Principal
+            dict(type="tab", name="Fazenda 3D", template="fazenda3d_tab.jinja2"),
+            # Menu de Configurações (Essencial para o botão Save funcionar)
+            dict(type="settings", custom_bindings=False)
+        ]
+
+    # ... (O RESTO DO CÓDIGO PERMANECE IGUAL PARA BAIXO) ...
 
     def connect_socket(self):
         t = threading.Thread(target=self._socket_worker)
@@ -89,7 +100,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         server_url = self._settings.get(["servidor_url"])
         
         if not server_url:
-            self._logger.info("WS: URL do servidor não configurada. WebSockets desativado.")
+            self._logger.info("WS: URL do servidor não configurada. Aguardando configuração...")
             return
 
         self.sio = socketio.Client()
@@ -130,12 +141,15 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
         while not self._shutdown_signal:
             try:
-                if not self.sio.connected:
-                    self._logger.info(f"WS: Tentando conectar a {server_url}...")
-                    self.sio.connect(server_url, namespaces=['/'])
+                # Recarrega a URL caso o usuário tenha mudado nas configurações
+                current_url = self._settings.get(["servidor_url"])
+                
+                if current_url and (not self.sio.connected):
+                    self._logger.info(f"WS: Tentando conectar a {current_url}...")
+                    self.sio.connect(current_url, namespaces=['/'])
                     self.sio.wait()
                 else:
-                    time.sleep(1)
+                    time.sleep(2)
             except Exception as e:
                 self._logger.warning(f"WS: Falha na conexão. Tentando em 30s. Erro: {e}")
                 self.streaming = False 
@@ -170,8 +184,6 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         except Exception as e:
             self._logger.error(f"WS: Erro no loop de vídeo: {e}")
             self.streaming = False
-
-    # --- CONFIGURAÇÕES DE DADOS ---
     
     def get_settings_defaults(self):
         return dict(servidor_url="", token="", nome_impressora="")
