@@ -40,6 +40,9 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         )
 
     def on_api_command(self, command, data):
+
+        self._logger.info(f"API RECEBIDA: comando={command}, dados={data}")
+
         if command == "connect":
             url_nova = data.get("servidor_url")
             token_novo = data.get("token")
@@ -47,6 +50,8 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             self._settings.set(["servidor_url"], url_nova)
             self._settings.set(["token"], token_novo)
             self._settings.save()
+
+            self._logger.info(f"Configurações atualizadas via API. Nova URL: {url_nova}")
             
             # FORÇAR O RESET DO CLIENTE SOCKET
             # Isso fará o loop do _socket_worker sair do 'wait' ou do 'sleep' 
@@ -57,8 +62,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     self.sio = None # Forçamos a recriação do objeto no worker
                 except:
                     pass
-            
-            self._logger.info(f"Configurações atualizadas via API. Nova URL: {url_nova}")
+
             return jsonify(success=True)
 
     # --- INICIALIZAÇÃO ---

@@ -12,7 +12,6 @@ $(function() {
 
         self.servidor_url = ko.observable();
         self.token = ko.observable();
-        self.nome_impressora = ko.observable();
         self.connectionStatus = ko.observable("Desconectado");
 
         // Sincroniza os dados ao abrir a aba ---
@@ -32,6 +31,9 @@ $(function() {
         };
 
         self.connectToServer = function() {
+
+            console.log("BOTÃO CLICADO! Enviando:", self.servidor_url());
+
             self.connectionStatus("Salvando e Conectando...");
 
             var payload = {
@@ -43,15 +45,24 @@ $(function() {
                 .done(function(response) {
                     // Sincroniza o settingsViewModel local para que, se você der F5, 
                     // o valor novo já esteja lá antes mesmo do Python responder
+
+                    console.log("Resposta do Python:", response);
+
                     var config = self.settings.settings.plugins.octoprint_fazenda3d;
                     config.servidor_url(self.servidor_url());
                     config.token(self.token());
                     
                     self.connectionStatus("URL Atualizada! Tentando conectar...");
+
                     console.log("Sucesso ao salvar nova URL:", payload.servidor_url);
+                    
                 })
                 .fail(function() {
+
+                    console.error("Erro na chamada API");
+
                     self.connectionStatus("Erro ao salvar configurações.");
+
                 });
         };
 
