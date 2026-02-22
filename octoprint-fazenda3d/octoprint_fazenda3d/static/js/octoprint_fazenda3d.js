@@ -17,10 +17,18 @@ $(function() {
 
         // Sincroniza os dados ao abrir a aba ---
         self.onBeforeBinding = function() {
-            // Puxa o que está salvo no config.yaml do OctoPrint
-            var config = self.settings.settings.plugins.fazenda3d;
-            self.servidor_url(config.servidor_url());
-            self.token(config.token());
+            // Tenta encontrar as configurações do plugin. 
+            // O OctoPrint usa o identificador do plugin (geralmente o nome da pasta ou definido no setup.py)
+            var settings = self.settings.settings.plugins.octoprint_fazenda3d || self.settings.settings.plugins.fazenda3d;
+            
+            if (settings) {
+                // Preenche os observáveis com os valores salvos
+                if (settings.servidor_url) self.servidor_url(settings.servidor_url());
+                if (settings.token) self.token(settings.token());
+                console.log("Fazenda3D: Dados carregados com sucesso.");
+            } else {
+                console.warn("Fazenda3D: Não foi possível encontrar as configurações no objeto 'plugins'.");
+            }
         };
 
         self.connectToServer = function() {
