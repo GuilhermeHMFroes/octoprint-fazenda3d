@@ -19,13 +19,13 @@ $(function() {
         self.onBeforeBinding = function() {
             // Tenta encontrar as configurações do plugin. 
             // O OctoPrint usa o identificador do plugin (geralmente o nome da pasta ou definido no setup.py)
-            var settings = self.settings.settings.plugins.octoprint_fazenda3d || self.settings.settings.plugins.fazenda3d;
+            var settings = self.settings.settings.plugins.octoprint_fazenda3d || self.settings.settings.plugins.octoprint_fazenda3d;
             
             if (settings) {
                 // Preenche os observáveis com os valores salvos
                 if (settings.servidor_url) self.servidor_url(settings.servidor_url());
                 if (settings.token) self.token(settings.token());
-                console.log("Fazenda3D: Dados carregados com sucesso.");
+                console.log("Fazenda3D: Dados carregados com sucesso.", self.servidor_url());
             } else {
                 console.warn("Fazenda3D: Não foi possível encontrar as configurações no objeto 'plugins'.");
             }
@@ -64,7 +64,8 @@ $(function() {
 
     OCTOPRINT_VIEWMODELS.push({
         construct: Fazenda3DViewModel,
-        dependencies: ["settingsViewModel"],
+        dependencies: ["settingsViewModel"], 
         elements: ["#tab_plugin_fazenda3d"]
     });
+    
 });
