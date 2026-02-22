@@ -1,1 +1,16 @@
 /* TODO: Have your plugin's CSS files generated to here. */
+
+#tab_plugin_fazenda3d {
+    padding: 20px;
+    box-sizing: border-box; /* Garante que padding não aumente o tamanho real */
+}
+
+#tab_plugin_fazenda3d .control-group {
+    margin-bottom: 15px;
+}
+
+/* Ajuste para as barras não saírem da margem */
+#tab_plugin_fazenda3d input.input-block-level {
+    max-width: 95%; /* Dá uma folga na direita */
+    height: 30px;
+}

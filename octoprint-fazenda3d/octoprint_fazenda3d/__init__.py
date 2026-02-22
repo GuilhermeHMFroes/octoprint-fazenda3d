@@ -39,36 +39,26 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             update=[]
         )
 
-    # --- AQUI ESTAVA O PROBLEMA: AGORA VAMOS SALVAR ---
     def on_api_command(self, command, data):
-        self._logger.info(f"API Fazenda3D: Comando recebido -> {command}")
-        
         if command == "connect":
-            # 1. PEGAR OS DADOS QUE O JS MANDOU
             url_nova = data.get("servidor_url")
             token_novo = data.get("token")
 
-            # 2. SALVAR NO CONFIG.YAML (Isso faltava!)
-            if url_nova:
-                self._settings.set(["servidor_url"], url_nova)
-            if token_novo:
-                self._settings.set(["token"], token_novo)
-            
-            # Força a gravação no disco agora
+            # Salva as novas configurações
+            self._settings.set(["servidor_url"], url_nova)
+            self._settings.set(["token"], token_novo)
             self._settings.save()
-            self._logger.info(f"Configurações SALVAS via API: {url_nova}")
-
-            # 3. TENTAR RECONECTAR O SOCKET IMEDIATAMENTE
-            # Desconecta o atual se existir
-            if self.sio and self.sio.connected:
-                self.sio.disconnect()
             
-            return jsonify(success=True, msg="Configurações salvas! Conectando...")
-        
-        elif command == "ping":
-            return jsonify(success=True, msg="Pong!")
-
-        return jsonify(success=True)
+            # Reinicia o Socket.IO para usar os novos dados
+            if self.sio:
+                try:
+                    self.sio.disconnect()
+                except:
+                    pass
+            
+            # O _socket_worker vai detectar que desconectou e tentar a nova URL
+            self._logger.info(f"Configurações atualizadas. Reconectando a {url_nova}")
+            return jsonify(success=True, msg="Configurações salvas e reconectando...")
 
     # --- INICIALIZAÇÃO ---
     def on_after_startup(self):
@@ -81,7 +71,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
     def get_assets(self):
         return dict(
             js=["js/octoprint_fazenda3d.js"], 
-            css=["css/fazenda3d.css"]
+            css=["css/octoprint_fazenda3d.css"]
         )
 
     def get_template_configs(self):
@@ -159,19 +149,32 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 time.sleep(30)
 
     def _video_stream_loop(self):
-        local_stream_url = "http://127.0.0.1:8080/?action=stream"
+        # BUSCA DINÂMICA: Puxa a URL configurada no "Classic Webcam"
+        local_stream_url = self._settings.global_get(["webcam", "stream"])
+        
+        # Validação: Se for uma URL relativa (começa com /), adicionamos o localhost
+        if local_stream_url and local_stream_url.startswith("/"):
+            local_stream_url = "http://127.0.0.1" + local_stream_url
+        
+        # Fallback caso não esteja configurado
+        if not local_stream_url:
+            local_stream_url = "http://127.0.0.1:8080/?action=stream"
+
+        self._logger.info(f"Fazenda3D: Iniciando stream a partir de: {local_stream_url}")
         token = self._settings.get(["token"])
 
         try:
-            stream = requests.get(local_stream_url, stream=True, timeout=5)
+            # Usamos stream=True para ler o MJPEG frame a frame
+            stream = requests.get(local_stream_url, stream=True, timeout=10)
             bytes_buffer = bytes()
 
-            for chunk in stream.iter_content(chunk_size=1024):
-                if not self.streaming: break
+            for chunk in stream.iter_content(chunk_size=1024 * 4): # Buffer maior para 1080p
+                if not self.streaming or self._shutdown_signal: 
+                    break
                 
                 bytes_buffer += chunk
-                a = bytes_buffer.find(b'\xff\xd8')
-                b = bytes_buffer.find(b'\xff\xd9')
+                a = bytes_buffer.find(b'\xff\xd8') # Início do JPEG
+                b = bytes_buffer.find(b'\xff\xd9') # Fim do JPEG
                 
                 if a != -1 and b != -1:
                     jpg = bytes_buffer[a:b+2]
@@ -179,11 +182,13 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     
                     if self.sio and self.sio.connected:
                         try:
+                            # Enviamos o frame binário para o servidor Node.js
                             self.sio.emit('video_frame', {'token': token, 'image': jpg})
-                            time.sleep(0.05) 
+                            # Controlamos o FPS aqui para não sobrecarregar o upload global
+                            # 0.1s = ~10 FPS (Ideal para monitoramento remoto)
+                            time.sleep(0.1) 
                         except Exception:
                             break
-                        
         except Exception as e:
             self._logger.error(f"WS: Erro no loop de vídeo: {e}")
             self.streaming = False

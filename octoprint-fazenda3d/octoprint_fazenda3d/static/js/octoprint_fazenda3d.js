@@ -7,10 +7,21 @@ $(function() {
         // (Isto agora deve estar a aparecer no seu console)
         console.log("Fazenda3DViewModel FOI CONSTRUÍDO!");
 
+        // Recebe as configurações globais do OctoPrint
+        self.settings = parameters[0];
+
         self.servidor_url = ko.observable();
         self.token = ko.observable();
         self.nome_impressora = ko.observable();
         self.connectionStatus = ko.observable("Desconectado");
+
+        // Sincroniza os dados ao abrir a aba ---
+        self.onBeforeBinding = function() {
+            // Puxa o que está salvo no config.yaml do OctoPrint
+            var config = self.settings.settings.plugins.fazenda3d;
+            self.servidor_url(config.servidor_url());
+            self.token(config.token());
+        };
 
         self.connectToServer = function() {
             
@@ -45,7 +56,7 @@ $(function() {
 
     OCTOPRINT_VIEWMODELS.push({
         construct: Fazenda3DViewModel,
-        dependencies: [], 
+        dependencies: ["settingsViewModel"],
         elements: ["#tab_plugin_fazenda3d"]
     });
 });
