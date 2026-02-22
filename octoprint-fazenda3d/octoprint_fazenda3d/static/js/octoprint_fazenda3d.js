@@ -32,31 +32,26 @@ $(function() {
         };
 
         self.connectToServer = function() {
-            
-            console.log("Botão 'connectToServer' FOI CLICADO!");
-            self.connectionStatus("Conectando...");
+            self.connectionStatus("Salvando e Conectando...");
 
             var payload = {
                 servidor_url: self.servidor_url(), 
                 token: self.token()
             };
-            
-            console.log("Enviando payload:", payload);
 
-            // --- A CORREÇÃO FINAL ESTÁ AQUI ---
             OctoPrint.simpleApiCommand("octoprint_fazenda3d", "connect", payload)
                 .done(function(response) {
-                    console.log("Resposta do servidor:", response);
-                    if(response.success) {
-                        self.connectionStatus("Conectado");
-                    } else {
-                        self.connectionStatus("Falha: " + (response.error || "Erro desconhecido"));
-                    }
+                    // Sincroniza o settingsViewModel local para que, se você der F5, 
+                    // o valor novo já esteja lá antes mesmo do Python responder
+                    var config = self.settings.settings.plugins.octoprint_fazenda3d;
+                    config.servidor_url(self.servidor_url());
+                    config.token(self.token());
+                    
+                    self.connectionStatus("URL Atualizada! Tentando conectar...");
+                    console.log("Sucesso ao salvar nova URL:", payload.servidor_url);
                 })
-                .fail(function(jqXHR, textStatus, errorThrown) {
-                    // O erro 400 estava a fazer com que o código caísse aqui
-                    console.error("Falha na chamada AJAX:", textStatus, errorThrown, jqXHR.responseText);
-                    self.connectionStatus("Erro de comunicação com o plugin (verifique o ID)");
+                .fail(function() {
+                    self.connectionStatus("Erro ao salvar configurações.");
                 });
         };
 
@@ -67,5 +62,5 @@ $(function() {
         dependencies: ["settingsViewModel"], 
         elements: ["#tab_plugin_fazenda3d"]
     });
-    
+
 });

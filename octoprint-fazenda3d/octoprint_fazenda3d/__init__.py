@@ -44,21 +44,22 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             url_nova = data.get("servidor_url")
             token_novo = data.get("token")
 
-            # Salva as novas configurações
             self._settings.set(["servidor_url"], url_nova)
             self._settings.set(["token"], token_novo)
             self._settings.save()
             
-            # Reinicia o Socket.IO para usar os novos dados
+            # FORÇAR O RESET DO CLIENTE SOCKET
+            # Isso fará o loop do _socket_worker sair do 'wait' ou do 'sleep' 
+            # e ler a nova URL do servidor_url
             if self.sio:
                 try:
                     self.sio.disconnect()
+                    self.sio = None # Forçamos a recriação do objeto no worker
                 except:
                     pass
             
-            # O _socket_worker vai detectar que desconectou e tentar a nova URL
-            self._logger.info(f"Configurações atualizadas. Reconectando a {url_nova}")
-            return jsonify(success=True, msg="Configurações salvas e reconectando...")
+            self._logger.info(f"Configurações atualizadas via API. Nova URL: {url_nova}")
+            return jsonify(success=True)
 
     # --- INICIALIZAÇÃO ---
     def on_after_startup(self):
