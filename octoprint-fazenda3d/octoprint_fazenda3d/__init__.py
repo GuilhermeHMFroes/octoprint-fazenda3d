@@ -11,6 +11,7 @@ import octoprint.util
 import octoprint.filemanager.destinations
 from flask import jsonify
 
+__plugin_pythoncompat__ = ">=3.7,<4"
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
                       octoprint.plugin.StartupPlugin,
@@ -73,6 +74,8 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         self._timer.start()
         self.connect_socket()
 
+        
+
     def get_assets(self):
         return dict(
             js=["js/octoprint_fazenda3d.js"], 
@@ -117,6 +120,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 def on_disconnect():
                     self._logger.info("WS: Desconectado do servidor.")
                     self.streaming = False
+                    self.stream_thread = None
 
                 @self.sio.on('execute_command')
                 def on_command(data):
@@ -140,6 +144,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 def on_stop_video(data):
                     self._logger.info("WS: Servidor parou vídeo.")
                     self.streaming = False
+                    self.stream_thread = None
 
             try:
                 if not self.sio.connected:
@@ -169,7 +174,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         self._logger.info(f"Fazenda3D: Iniciando stream a partir de: {local_stream_url}")
         token = self._settings.get(["token"])
 
-        
+        stream = None
 
         try:
             # Usamos stream=True para ler o MJPEG frame a frame
@@ -189,20 +194,24 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     bytes_buffer = bytes_buffer[b+2:]
                     
                     if self.sio and self.sio.connected:
+
                         try:
-                            # Garanta que o 'jpg' é do tipo bytes
-                            self.sio.emit('video_frame', {
-                                'token': token, 
-                                'image': jpg # O python-socketio trata bytes como binário automaticamente
-                            })
-                            time.sleep(0.1) # 10 FPS está ótimo para não saturar o upload
-                        except Exception as e:
-                            self._logger.warning(f"Falha ao enviar frame: {e}")
+                            # Envia o frame. O servidor Flask vai repassar isso para o React
+                            self.sio.emit('video_frame', {'token': token, 'image': jpg})
+                            time.sleep(0.1) # 10 FPS
+
+                        except:
                             break
 
         except Exception as e:
+
             self._logger.error(f"WS: Erro no loop de vídeo: {e}")
+
+        finally:
+
+            if stream: stream.close() # Garante que a conexão com a câmera feche
             self.streaming = False
+            self._logger.info("Fazenda3D: Loop de vídeo encerrado.")
     
     def get_settings_defaults(self):
         return dict(servidor_url="", token="", nome_impressora="")
