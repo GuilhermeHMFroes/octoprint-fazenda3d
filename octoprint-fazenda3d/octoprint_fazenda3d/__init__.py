@@ -133,7 +133,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
                 @self.sio.on('start_video')
                 def on_start_video(data):
-                    self._logger.info("WS: Servidor pediu vídeo. Iniciando stream...")
+                    self._logger.info("WS: EVENTO RECEBIDO! Servidor pediu vídeo.")
                     self.streaming = True
                     if self.stream_thread is None or not self.stream_thread.is_alive():
                         self.stream_thread = threading.Thread(target=self._video_stream_loop)
