@@ -154,6 +154,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 time.sleep(30)
 
     def _video_stream_loop(self):
+
         # BUSCA DINÂMICA: Puxa a URL configurada no "Classic Webcam"
         local_stream_url = self._settings.global_get(["webcam", "stream"])
         
@@ -167,6 +168,8 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
         self._logger.info(f"Fazenda3D: Iniciando stream a partir de: {local_stream_url}")
         token = self._settings.get(["token"])
+
+        
 
         try:
             # Usamos stream=True para ler o MJPEG frame a frame
@@ -187,13 +190,16 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     
                     if self.sio and self.sio.connected:
                         try:
-                            # Enviamos o frame binário para o servidor Node.js
-                            self.sio.emit('video_frame', {'token': token, 'image': jpg})
-                            # Controlamos o FPS aqui para não sobrecarregar o upload global
-                            # 0.1s = ~10 FPS (Ideal para monitoramento remoto)
-                            time.sleep(0.1) 
-                        except Exception:
+                            # Garanta que o 'jpg' é do tipo bytes
+                            self.sio.emit('video_frame', {
+                                'token': token, 
+                                'image': jpg # O python-socketio trata bytes como binário automaticamente
+                            })
+                            time.sleep(0.1) # 10 FPS está ótimo para não saturar o upload
+                        except Exception as e:
+                            self._logger.warning(f"Falha ao enviar frame: {e}")
                             break
+
         except Exception as e:
             self._logger.error(f"WS: Erro no loop de vídeo: {e}")
             self.streaming = False
