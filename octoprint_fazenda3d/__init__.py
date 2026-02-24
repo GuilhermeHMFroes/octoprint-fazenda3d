@@ -295,7 +295,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             except: pass
 
 __plugin_name__ = "Fazenda3D"
-__plugin_version__ = "0.1.0"
-__plugin_description__ = "Versão Cloud Resiliente"
-__plugin_pythoncompat__ = ">=3,<4" # Garante compatibilidade total com Python 3
+__plugin_version__ = "0.1.0" # Deve ser igual à do pyproject.toml
+__plugin_description__ = "Plugin de Integração Cloud"
+__plugin_pythoncompat__ = ">=3,<4"
 __plugin_implementation__ = Fazenda3DPlugin()
