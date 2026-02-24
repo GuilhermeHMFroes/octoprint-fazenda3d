@@ -11,7 +11,7 @@ import octoprint.util
 import octoprint.filemanager.destinations
 from flask import jsonify
 
-__plugin_pythoncompat__ = ">=3.7,<4"
+
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
                       octoprint.plugin.StartupPlugin,
@@ -294,8 +294,8 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             try: self.sio.disconnect()
             except: pass
 
-__plugin_name__ = "Fazenda 3D"
+__plugin_name__ = "Fazenda3D"
 __plugin_version__ = "0.2.1"
 __plugin_description__ = "Versão Cloud Resiliente"
-__plugin_pythoncompat__ = ">=3,<4"
+__plugin_pythoncompat__ = ">=3,<4" # Garante compatibilidade total com Python 3
 __plugin_implementation__ = Fazenda3DPlugin()
