@@ -40,7 +40,11 @@ Se for a primeira vez que você instala um plugin ele vai gerar esse alertaa, ma
 
 Agora vai ser realizada a instalação do plugin.
 
-vai em From url e   coloque a seguinte url: https://github.com/GuilhermeHMFroes/octoprint-fazenda3d/archive/refs/heads/main.zip e depois clique em install
+vai em From url e   coloque a seguinte url: 
+
+https://github.com/GuilhermeHMFroes/octoprint-fazenda3d/archive/refs/heads/main.zip 
+
+e depois clique em install.
 
 ![Instalando o plugin](Imagens_tutorial/InstallPlugin.png)
 
@@ -74,27 +78,4 @@ No sistema de fazenda você vai gerar o token e vai copiar esse token no campo t
 
 ![Exemplo](Imagens_tutorial/exemplo.png)
 
-### Passo 
-
-
-
-
-
-
-
-
-
-
-## Setup
-
-Install via the bundled [Plugin Manager](https://docs.octoprint.org/en/main/bundledplugins/pluginmanager.html)
-or manually using this URL:
-
-    https://github.com/GuilhermeHMFroes/octoprint-fazenda3d/archive/master.zip
-
-**TODO:** Describe how to install your plugin, if more needs to be done than just installing it via pip or through
-the plugin manager.
-
-## Configuration
-
-**TODO:** Describe your plugin's configuration options (if any).
+é só  clicar agora em conectar ao servidor e começar a usar
