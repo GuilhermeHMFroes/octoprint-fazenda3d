@@ -42,7 +42,7 @@ Agora vai ser realizada a instalação do plugin.
 
 vai em From url e   coloque a seguinte url: 
 
-    https://github.com/GuilhermeHMFroes/octoprint-fazenda3d/archive/refs/heads/main.zip 
+    https://github.com/GuilhermeHMFroes/octoprint-fazenda3d/archive/refs/heads/main.zip
 
 e depois clique em install.
 
