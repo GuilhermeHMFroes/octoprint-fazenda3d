@@ -11,6 +11,7 @@ import octoprint.util
 import octoprint.filemanager.destinations
 from flask import jsonify
 
+import urllib.parse
 
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                       octoprint.plugin.TemplatePlugin,
@@ -264,17 +265,26 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             pass
 
     def _baixar_e_imprimir(self, arquivo_url):
+        
         self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
-        try:
-            import urllib.parse
-            uploads_folder = self._settings.global_get(["folder", "uploads"])
-            if not uploads_folder: uploads_folder = os.path.expanduser("~/.octoprint/uploads")
-            if not os.path.exists(uploads_folder): os.makedirs(uploads_folder)
 
+        try:
+            
+            # 1. Pega a pasta de uploads correta do OctoPrint
+            uploads_folder = self._settings.global_get(["folder", "uploads"])
+            if not uploads_folder: 
+                uploads_folder = os.path.expanduser("~/.octoprint/uploads")
+            
+            if not os.path.exists(uploads_folder): 
+                os.makedirs(uploads_folder)
+
+            # 2. Limpa o nome do arquivo
             raw_filename = os.path.basename(urllib.parse.unquote(arquivo_url))
+            # Remove caracteres estranhos que o OctoPrint rejeita
             filename = "".join(x for x in raw_filename if (x.isalnum() or x in "._- "))
             file_path = os.path.join(uploads_folder, filename)
 
+            # 3. Faz o download
             r = requests.get(arquivo_url, stream=True, timeout=60)
             r.raise_for_status()
 
@@ -282,10 +292,19 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 for chunk in r.iter_content(chunk_size=1024 * 8): 
                     if chunk: f.write(chunk)
             
-            self._printer.select_file(filename, False, printAfterSelect=True)
-            self._logger.info(f"Fazenda3D: Impressão iniciada: {filename}")
+            self._logger.info(f"Fazenda3D: Download concluído: {file_path}")
+
+            # --- A CORREÇÃO CRUCIAL AQUI ---
+            # Aguarda um pequeno instante para o sistema de arquivos liberar o arquivo
+            time.sleep(1.5) 
+            
+            # O comando correto para selecionar e imprimir do storage local
+            self._printer.select_file(filename, False, tags=["local"], printAfterSelect=True)
+            
+            self._logger.info(f"Fazenda3D: Arquivo {filename} selecionado para impressão.")
+            
         except Exception as e:
-            self._logger.error(f"Fazenda3D: Erro no download: {e}")
+            self._logger.error(f"Fazenda3D: Falha no processo de download/impressão: {str(e)}")
 
     def on_shutdown(self):
         self._shutdown_signal = True 
