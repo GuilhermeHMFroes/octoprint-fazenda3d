@@ -10,6 +10,8 @@ import octoprint.plugin
 import octoprint.util
 from flask import jsonify
 
+import urllib.parse
+
 
 
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
