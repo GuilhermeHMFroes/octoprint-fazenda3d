@@ -128,12 +128,24 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
                 @self.sio.on('execute_command')
                 def on_command(data):
-                    cmd = data.get('cmd')
+                    # O servidor envia como 'command', então buscamos essa chave
+                    cmd = data.get('command') or data.get('cmd') 
+                    
+                    if not cmd:
+                        self._logger.error("Fazenda3D: Recebido execute_command mas o comando está vazio.")
+                        return
+
                     self._logger.info(f"WS: Comando recebido: {cmd}")
-                    if cmd == 'pause': self._printer.pause_print()
-                    elif cmd == 'resume': self._printer.resume_print()
-                    elif cmd == 'cancel': self._printer.cancel_print()
-                    else: self._printer.commands(cmd)
+                    
+                    if cmd == 'pause': 
+                        self._printer.pause_print()
+                    elif cmd == 'resume': 
+                        self._printer.resume_print()
+                    elif cmd == 'cancel': 
+                        self._printer.cancel_print()
+                    else: 
+                        # Para comandos G-Code puros (G28, G0, etc)
+                        self._printer.commands(cmd)
 
                 @self.sio.on('start_video')
                 def on_start_video(data):
