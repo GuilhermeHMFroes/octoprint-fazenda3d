@@ -274,32 +274,34 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             raw_filename = os.path.basename(urllib.parse.unquote(arquivo_url))
             filename = "".join(x for x in raw_filename if (x.isalnum() or x in "._- "))
 
-            # 2. Download via requests (stream=True é vital)
+            # --- NOVO: REMOVER ARQUIVO ANTIGO SE EXISTIR ---
+            if self._file_manager.file_exists("local", filename):
+                self._logger.info(f"Fazenda3D: Removendo arquivo existente: {filename}")
+                self._file_manager.remove_file("local", filename)
+
+            # 2. Download via requests (stream)
             r = requests.get(arquivo_url, stream=True, timeout=60)
             r.raise_for_status()
 
-            # 3. Transformar o download em um formato que o OctoPrint aceita
-            # O StreamWrapper adiciona os métodos que o FileManager precisa (como o .save)
+            # 3. Preparar o StreamWrapper
             meu_arquivo = octoprint.filemanager.util.StreamWrapper(filename, r.raw)
 
             # 4. SALVAR VIA FILE MANAGER
-            # Passamos o wrapper no lugar do r.raw
+            # Agora que deletamos o antigo, o add_file não encontrará resistência
             self._file_manager.add_file(
                 "local", 
                 filename,
-                meu_arquivo,
-                True
+                meu_arquivo
             )
 
-            self._logger.info(f"Fazenda3D: Arquivo {filename} salvo com sucesso via StreamWrapper.")
+            self._logger.info(f"Fazenda3D: Arquivo {filename} salvo com sucesso.")
 
             # 5. Pequeno delay para garantir a indexação
             time.sleep(1.5)
 
             # 6. Selecionar e Imprimir
             self._printer.select_file(filename, False, printAfterSelect=True)
-            
-            self._logger.info(f"Fazenda3D: Impressão disparada com sucesso para {filename}")
+            self._logger.info(f"Fazenda3D: Impressão disparada para {filename}")
 
         except Exception as e:
             self._logger.error(f"Fazenda3D: Erro crítico no processo: {str(e)}")
