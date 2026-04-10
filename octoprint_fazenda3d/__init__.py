@@ -10,6 +10,8 @@ import octoprint.plugin
 import octoprint.util
 from flask import jsonify
 
+import octoprint.filemanager.util
+
 import urllib.parse
 
 
@@ -272,31 +274,35 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             raw_filename = os.path.basename(urllib.parse.unquote(arquivo_url))
             filename = "".join(x for x in raw_filename if (x.isalnum() or x in "._- "))
 
-            # 2. Download via requests (stream)
+            # 2. Download via requests (stream=True é vital)
             r = requests.get(arquivo_url, stream=True, timeout=60)
             r.raise_for_status()
 
-            # 3. USAR O FILE MANAGER (Formato posicional para evitar erro de keyword)
-            # Argumentos: (destino, caminho, objeto_do_arquivo, overwrite)
+            # 3. Transformar o download em um formato que o OctoPrint aceita
+            # O StreamWrapper adiciona os métodos que o FileManager precisa (como o .save)
+            meu_arquivo = octoprint.filemanager.util.StreamWrapper(filename, r.raw)
+
+            # 4. SALVAR VIA FILE MANAGER
+            # Passamos o wrapper no lugar do r.raw
             self._file_manager.add_file(
                 "local", 
                 filename,
-                r.raw,
+                meu_arquivo,
                 True
             )
 
-            self._logger.info(f"Fazenda3D: Arquivo {filename} salvo com sucesso.")
+            self._logger.info(f"Fazenda3D: Arquivo {filename} salvo com sucesso via StreamWrapper.")
 
-            # 4. Pequeno delay para garantir a indexação
+            # 5. Pequeno delay para garantir a indexação
             time.sleep(1.5)
 
-            # 5. Selecionar e Imprimir
+            # 6. Selecionar e Imprimir
             self._printer.select_file(filename, False, tags=["local"], printAfterSelect=True)
             self._logger.info(f"Fazenda3D: Impressão disparada para {filename}")
 
         except Exception as e:
             self._logger.error(f"Fazenda3D: Erro crítico no processo: {str(e)}")
-            
+
     def on_shutdown(self):
         self._shutdown_signal = True 
         if self._timer: self._timer.cancel()
