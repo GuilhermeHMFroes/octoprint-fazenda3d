@@ -114,11 +114,11 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 self.sio = socketio.Client()
                 
                 # --- EVENTOS ---
-                @self.sio.on('connect')
+                @self.sio.on('connect', namespace='/')
                 def on_connect():
-                    self._logger.info("WS: Conectado ao Servidor na Nuvem!")
+                    self._logger.info("WS: Conectado!")
                     token = self._settings.get(["token"])
-                    self.sio.emit('printer_connect', {'token': token})
+                    self.sio.emit('printer_connect', {'token': token}, namespace='/')
 
                 @self.sio.on('disconnect')
                 def on_disconnect():
@@ -126,7 +126,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     self.streaming = False
                     self.stream_thread = None
 
-                @self.sio.on('execute_command')
+                @self.sio.on('execute_command', namespace='/')
                 def on_command(data):
 
                     # LOG DE EMERGÊNCIA - Isso TEM que aparecer se o socket chegar
