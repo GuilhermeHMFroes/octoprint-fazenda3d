@@ -11,7 +11,6 @@ import octoprint.util
 from flask import jsonify
 
 import urllib.parse
-from octoprint.filemanager.destinations import Destinations
 
 
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
@@ -266,8 +265,10 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             pass
 
     def _baixar_e_imprimir(self, arquivo_url):
-        self._logger.info(f"Fazenda3D: A iniciar download de: {arquivo_url}")
+        self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
         try:
+            from octoprint.filemanager.destinations import Destinations # ADICIONE AQUI
+            import urllib.parse
             
 
             # 1. Extrair e limpar o nome do ficheiro
