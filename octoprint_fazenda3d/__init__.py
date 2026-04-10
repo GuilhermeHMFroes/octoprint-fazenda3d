@@ -8,8 +8,10 @@ import flask
 import socketio
 import octoprint.plugin
 import octoprint.util
-import octoprint.filemanager.destinations
 from flask import jsonify
+
+import urllib.parse
+from octoprint.filemanager.destinations import Destinations
 
 
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
@@ -264,28 +266,40 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             pass
 
     def _baixar_e_imprimir(self, arquivo_url):
-        self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
+        self._logger.info(f"Fazenda3D: A iniciar download de: {arquivo_url}")
         try:
-            import urllib.parse
-            uploads_folder = self._settings.global_get(["folder", "uploads"])
-            if not uploads_folder: uploads_folder = os.path.expanduser("~/.octoprint/uploads")
-            if not os.path.exists(uploads_folder): os.makedirs(uploads_folder)
+            
 
+            # 1. Extrair e limpar o nome do ficheiro
             raw_filename = os.path.basename(urllib.parse.unquote(arquivo_url))
             filename = "".join(x for x in raw_filename if (x.isalnum() or x in "._- "))
-            file_path = os.path.join(uploads_folder, filename)
 
+            # 2. Fazer o download para a memória primeiro (evita problemas de escrita direta)
             r = requests.get(arquivo_url, stream=True, timeout=60)
             r.raise_for_status()
 
-            with open(file_path, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=1024 * 8): 
-                    if chunk: f.write(chunk)
+            # 3. USAR O FILE MANAGER DO OCTOPRINT PARA GUARDAR
+            # Isso garante que o OctoPrint "veja" o ficheiro imediatamente
+            self._file_manager.add_file(
+                destination=Destinations.LOCAL,
+                path=filename,
+                file_object=r.raw,
+                allow_overwrite=True
+            )
+
+            self._logger.info(f"Fazenda3D: Ficheiro {filename} guardado via FileManager.")
+
+            # 4. Aguardar um momento para o sistema processar o novo ficheiro
+            time.sleep(1.5)
+
+            # 5. Selecionar para imprimir
+            # O OctoPrint agora terá o ficheiro no storage local garantidamente
+            self._printer.select_file(filename, False, tags=["local"], printAfterSelect=True)
             
-            self._printer.select_file(filename, False, printAfterSelect=True)
-            self._logger.info(f"Fazenda3D: Impressão iniciada: {filename}")
+            self._logger.info(f"Fazenda3D: Comando de impressão enviado para {filename}")
+
         except Exception as e:
-            self._logger.error(f"Fazenda3D: Erro no download: {e}")
+            self._logger.error(f"Fazenda3D: Erro crítico no processo: {str(e)}")
 
     def on_shutdown(self):
         self._shutdown_signal = True 
