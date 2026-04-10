@@ -170,10 +170,18 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             try:
                 if not self.sio.connected:
                     self._logger.info(f"WS: Tentando conectar a {server_url}...")
-                    self.sio.connect(server_url, namespaces=['/'])
+        
+                    # REMOVA o namespaces=['/'] daqui e force o websocket
+                    self.sio.connect(
+                        server_url, 
+                        transports=['websocket'], # Força apenas websocket
+                        socketio_path='/socket.io'
+                    )
                     self.sio.wait()
+
                 else:
                     time.sleep(2)
+                    
             except Exception as e:
                 self._logger.warning(f"WS: Falha na conexão. Tentando em 30s. Erro: {e}")
                 self.streaming = False 
