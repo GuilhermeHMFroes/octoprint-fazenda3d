@@ -297,8 +297,9 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             time.sleep(1.5)
 
             # 6. Selecionar e Imprimir
-            self._printer.select_file(filename, False, tags=["local"], printAfterSelect=True)
-            self._logger.info(f"Fazenda3D: Impressão disparada para {filename}")
+            self._printer.select_file(filename, False, printAfterSelect=True)
+            
+            self._logger.info(f"Fazenda3D: Impressão disparada com sucesso para {filename}")
 
         except Exception as e:
             self._logger.error(f"Fazenda3D: Erro crítico no processo: {str(e)}")
