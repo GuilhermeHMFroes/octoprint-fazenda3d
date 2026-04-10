@@ -128,8 +128,13 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
                 @self.sio.on('execute_command')
                 def on_command(data):
+
+                    # LOG DE EMERGÊNCIA - Isso TEM que aparecer se o socket chegar
+                    self._logger.info(f"!!! DEBUG SOCKET RECEBIDO: {data}")
+
                     # O servidor envia como 'command', então buscamos essa chave
                     cmd = data.get('command') or data.get('cmd') 
+
                     
                     if not cmd:
                         self._logger.error("Fazenda3D: Recebido execute_command mas o comando está vazio.")
