@@ -266,37 +266,31 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
     def _baixar_e_imprimir(self, arquivo_url):
         self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
         try:
-            from octoprint.filemanager.destinations import Destinations
-            import urllib.parse
-            
-
-            # 1. Extrair e limpar o nome do ficheiro
+            # 1. Extrair e limpar o nome do arquivo
             raw_filename = os.path.basename(urllib.parse.unquote(arquivo_url))
             filename = "".join(x for x in raw_filename if (x.isalnum() or x in "._- "))
 
-            # 2. Fazer o download para a memória primeiro (evita problemas de escrita direta)
+            # 2. Download via requests (usando stream para o add_file ler)
             r = requests.get(arquivo_url, stream=True, timeout=60)
             r.raise_for_status()
 
-            # 3. USAR O FILE MANAGER DO OCTOPRINT PARA GUARDAR
-            # Isso garante que o OctoPrint "veja" o ficheiro imediatamente
+            # 3. USAR O FILE MANAGER COM STRING DIRETA
+            # "local" é o destino padrão que o OctoPrint entende
             self._file_manager.add_file(
-                destination=Destinations.LOCAL,
+                destination="local", 
                 path=filename,
                 file_object=r.raw,
                 allow_overwrite=True
             )
 
-            self._logger.info(f"Fazenda3D: Ficheiro {filename} guardado via FileManager.")
+            self._logger.info(f"Fazenda3D: Arquivo {filename} salvo com sucesso.")
 
-            # 4. Aguardar um momento para o sistema processar o novo ficheiro
+            # 4. Pequeno delay para garantir a indexação
             time.sleep(1.5)
 
-            # 5. Selecionar para imprimir
-            # O OctoPrint agora terá o ficheiro no storage local garantidamente
+            # 5. Selecionar e Imprimir
             self._printer.select_file(filename, False, tags=["local"], printAfterSelect=True)
-            
-            self._logger.info(f"Fazenda3D: Comando de impressão enviado para {filename}")
+            self._logger.info(f"Fazenda3D: Impressão disparada para {filename}")
 
         except Exception as e:
             self._logger.error(f"Fazenda3D: Erro crítico no processo: {str(e)}")
