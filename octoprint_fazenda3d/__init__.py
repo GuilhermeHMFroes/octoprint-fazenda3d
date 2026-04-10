@@ -10,7 +10,6 @@ import octoprint.plugin
 import octoprint.util
 from flask import jsonify
 
-import urllib.parse
 
 
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
@@ -267,7 +266,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
     def _baixar_e_imprimir(self, arquivo_url):
         self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
         try:
-            from octoprint.filemanager.destinations import Destinations # ADICIONE AQUI
+            from octoprint.filemanager.destinations import Destinations
             import urllib.parse
             
 
