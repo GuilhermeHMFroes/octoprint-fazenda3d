@@ -272,17 +272,17 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             raw_filename = os.path.basename(urllib.parse.unquote(arquivo_url))
             filename = "".join(x for x in raw_filename if (x.isalnum() or x in "._- "))
 
-            # 2. Download via requests (usando stream para o add_file ler)
+            # 2. Download via requests (stream)
             r = requests.get(arquivo_url, stream=True, timeout=60)
             r.raise_for_status()
 
-            # 3. USAR O FILE MANAGER COM STRING DIRETA
-            # "local" é o destino padrão que o OctoPrint entende
+            # 3. USAR O FILE MANAGER (Formato posicional para evitar erro de keyword)
+            # Argumentos: (destino, caminho, objeto_do_arquivo, overwrite)
             self._file_manager.add_file(
-                destination="local", 
-                path=filename,
-                file_object=r.raw,
-                allow_overwrite=True
+                "local", 
+                filename,
+                r.raw,
+                True
             )
 
             self._logger.info(f"Fazenda3D: Arquivo {filename} salvo com sucesso.")
@@ -296,7 +296,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
         except Exception as e:
             self._logger.error(f"Fazenda3D: Erro crítico no processo: {str(e)}")
-
+            
     def on_shutdown(self):
         self._shutdown_signal = True 
         if self._timer: self._timer.cancel()
