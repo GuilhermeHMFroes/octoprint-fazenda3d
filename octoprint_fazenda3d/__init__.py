@@ -204,7 +204,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             
             # Buffer para reconstruir as imagens do MJPEG
             bytes_buffer = bytes()
-            for chunk in res.iter_content(chunk_size=4096):
+            for chunk in res.iter_content(chunk_size=8192):
                 if not self.streaming: 
                     break
                 
