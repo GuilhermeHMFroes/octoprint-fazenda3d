@@ -14,6 +14,8 @@ import octoprint.filemanager.util
 
 import urllib.parse
 
+import base64
+
 
 
 class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
@@ -189,29 +191,21 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
     def _video_stream_loop(self):
 
-        # BUSCA DINÂMICA: Puxa a URL configurada no "Classic Webcam"
-        local_stream_url = self._settings.global_get(["webcam", "stream"])
+        # Pega a URL do stream das configurações do OctoPrint
+        stream_url = self._settings.global_get(["webcam", "stream"])
+        if not stream_url:
+            stream_url = "http://127.0.0.1:8080/?action=stream" # Default
+
+        self._logger.info(f"Fazenda3D: Iniciando stream a partir de: {stream_url}")
         
-        # Validação: Se for uma URL relativa (começa com /), adicionamos o localhost
-        if local_stream_url and local_stream_url.startswith("/"):
-            local_stream_url = "http://127.0.0.1" + local_stream_url
-        
-        # Fallback caso não esteja configurado
-        if not local_stream_url:
-            local_stream_url = "http://127.0.0.1:8080/?action=stream"
-
-        self._logger.info(f"Fazenda3D: Iniciando stream a partir de: {local_stream_url}")
-        token = self._settings.get(["token"])
-
-        stream = None
-
         try:
-            # Usamos stream=True para ler o MJPEG frame a frame
-            stream = requests.get(local_stream_url, stream=True, timeout=10)
+            # Conectando ao stream local do mjpg-streamer
+            res = requests.get(stream_url, stream=True, timeout=10)
+            
+            # Buffer para reconstruir as imagens do MJPEG
             bytes_buffer = bytes()
-
-            for chunk in stream.iter_content(chunk_size=1024 * 4): # Buffer maior para 1080p
-                if not self.streaming or self._shutdown_signal: 
+            for chunk in res.iter_content(chunk_size=1024):
+                if not self.streaming: 
                     break
                 
                 bytes_buffer += chunk
@@ -222,23 +216,20 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     jpg = bytes_buffer[a:b+2]
                     bytes_buffer = bytes_buffer[b+2:]
                     
-                    if self.sio and self.sio.connected:
-
-                        try:
-                            # Envia o frame. O servidor Flask vai repassar isso para o React
-                            self.sio.emit('video_frame', {'token': token, 'image': jpg})
-                            time.sleep(0.1) # 10 FPS
-
-                        except:
-                            break
+                    # Converte para Base64 para enviar via JSON no Socket
+                    img_base64 = base64.b64encode(jpg).decode('utf-8')
+                    
+                    self.sio.emit('video_frame', {
+                        'token': self._settings.get(["token"]),
+                        'image': img_base64
+                    })
+                    
+                    # Controle de FPS (ex: ~15 FPS para não sobrecarregar)
+                    time.sleep(0.06) 
 
         except Exception as e:
-
-            self._logger.error(f"WS: Erro no loop de vídeo: {e}")
-
+            self._logger.error(f"Erro no loop de vídeo: {e}")
         finally:
-
-            if stream: stream.close() # Garante que a conexão com a câmera feche
             self.streaming = False
             self._logger.info("Fazenda3D: Loop de vídeo encerrado.")
     
