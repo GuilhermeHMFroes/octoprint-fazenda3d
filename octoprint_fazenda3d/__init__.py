@@ -118,9 +118,20 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 # --- EVENTOS ---
                 @self.sio.on('connect', namespace='/')
                 def on_connect():
-                    self._logger.info("WS: Conectado!")
+                    #self._logger.info("WS: Conectado!")
                     token = self._settings.get(["token"])
                     self.sio.emit('printer_connect', {'token': token}, namespace='/')
+
+                @self.sio.on('server_ack', namespace='/')
+                def on_server_ack(data):
+                    # AGORA SIM: O servidor confirmou que o token existe e te aceitou na sala
+                    self._logger.info("WS: Autenticado e Conectado com sucesso!")
+
+                @self.sio.on('server_error', namespace='/')
+                def on_server_error(data):
+                    # O servidor te chutou porque o token é inválido
+                    self._logger.error(f"WS: Erro de Autenticação: {data.get('message')}")
+                    self.sio.disconnect() # Desconecta imediatamente
 
                 @self.sio.on('disconnect')
                 def on_disconnect():
