@@ -71,6 +71,12 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 except:
                     pass
 
+            # Garantir que o loop status (HTTP) também volte se tiver sido parado
+            if self._timer is None:
+                interval = 5.0
+                self._timer = octoprint.util.RepeatedTimer(interval, self._loop_status)
+                self._timer.start()
+
             return jsonify(success=True)
 
     # --- INICIALIZAÇÃO ---
