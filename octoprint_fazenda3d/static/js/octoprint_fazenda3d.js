@@ -30,6 +30,18 @@ $(function() {
             }
         };
 
+        self.onDataUpdaterPluginMessage = function(plugin, data) {
+            if (plugin !== "octoprint_fazenda3d") return;
+
+            if (data.type === "status") {
+                // Atualiza o texto na tela
+                self.connectionStatus(data.msg);
+                
+                // Dica: Você pode usar o data.color se quiser mudar a cor do texto via CSS futuramente
+                console.log("Status do Plugin atualizado:", data.msg);
+            }
+        };
+
         self.connectToServer = function() {
 
             console.log("BOTÃO CLICADO! Enviando:", self.servidor_url());

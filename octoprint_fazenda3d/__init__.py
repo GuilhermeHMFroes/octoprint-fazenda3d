@@ -132,8 +132,13 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
                 @self.sio.on('server_ack', namespace='/')
                 def on_server_ack(data):
-                    # AGORA SIM: O servidor confirmou que o token existe e te aceitou na sala
+                    # O servidor confirmou que o token existe e te aceitou na sala
                     self._logger.info("WS: Autenticado e Conectado com sucesso!")
+                    
+                    # AVISA O FRONTEND
+                    self._plugin_manager.send_plugin_message(self._identifier, dict(type="status", msg="Conectado com sucesso!", color="green"))
+
+                    
 
                 @self.sio.on('server_error', namespace='/')
                 def on_server_error(data):
@@ -142,11 +147,18 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     self._token_valido = False
                     self.sio.disconnect() # Desconecta imediatamente
 
+                    # AVISA O FRONTEND
+                    msg = data.get('message', 'Erro desconhecido')
+                    self._plugin_manager.send_plugin_message(self._identifier, dict(type="status", msg=f"Erro: {msg}", color="red"))
+
                 @self.sio.on('disconnect')
                 def on_disconnect():
                     self._logger.info("WS: Desconectado do servidor.")
                     self.streaming = False
                     self.stream_thread = None
+
+                    # AVISA O FRONTEND
+                    self._plugin_manager.send_plugin_message(self._identifier, dict(type="status", msg="Desconectado", color="orange"))
 
                 @self.sio.on('execute_command', namespace='/')
                 def on_command(data):

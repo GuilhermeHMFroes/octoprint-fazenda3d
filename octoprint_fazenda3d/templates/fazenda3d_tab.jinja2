@@ -20,6 +20,10 @@
     Conectar ao Servidor
   </button>
 
-  <p style="margin-top: 10px;">Status: <span data-bind="text: connectionStatus"></span></p>
+  <p style="margin-top: 15px; font-weight: bold;">
+      Status: 
+      <span data-bind="text: connectionStatus, style: { color: connectionStatus().includes('Erro') ? 'red' : (connectionStatus().includes('sucesso') ? 'green' : 'orange') }">
+      </span>
+  </p>
 
 </div>
