@@ -286,13 +286,32 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 #resp = requests.get(url_fila, timeout=2)
                 resp_fila = requests.get(url_fila, timeout=2)
 
-                if resp.status_code == 200:
-                    obj = resp.json()
+                if resp_fila.status_code == 401:
+                    self._logger.error("Fazenda3D: Acesso à fila negado (401). Parando monitoramento.")
+                    self._parar_tudo()
+                    return
+
+                if resp_fila.status_code == 200:
+                    obj = resp_fila.json()
                     if obj.get("novo_arquivo"):
                         self._baixar_e_imprimir(obj.get("arquivo_url"))
 
         except Exception:
             pass
+
+    def _parar_tudo(self):
+        """Cancela o timer e desconecta o socket para cessar logs no servidor"""
+        if self._timer:
+            self._timer.cancel()
+            self._timer = None
+            self._logger.info("Fazenda3D: RepeatedTimer cancelado.")
+        
+        if self.sio and self.sio.connected:
+            try:
+                self.sio.disconnect()
+                self._logger.info("Fazenda3D: Socket desconectado.")
+            except:
+                pass
 
     def _baixar_e_imprimir(self, arquivo_url):
         self._logger.info(f"Fazenda3D: Iniciando download de: {arquivo_url}")
