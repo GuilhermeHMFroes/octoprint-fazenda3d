@@ -109,9 +109,20 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
 
     # --- SOCKETS ---
     def connect_socket(self):
-        t = threading.Thread(target=self._socket_worker)
-        t.daemon = True 
-        t.start()
+
+        # Verifica se já existe um thread rodando para não duplicar o loop
+        if hasattr(self, "_socket_thread") and self._socket_thread.is_alive():
+            self._logger.info("WS: Worker já está rodando. O reset do sio cuidará da reconexão.")
+            return
+        
+        self._socket_thread = threading.Thread(target=self._socket_worker)
+        self._socket_thread.daemon = True 
+        self._socket_thread.start()
+        self._logger.info("WS: Nova thread do Worker iniciada.")
+        
+        #t = threading.Thread(target=self._socket_worker)
+        #t.daemon = True 
+        #t.start()
 
     def _socket_worker(self):
         # Pequeno delay inicial para garantir que settings carregaram
@@ -157,7 +168,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     msg = data.get('message', 'Erro desconhecido')
                     self._plugin_manager.send_plugin_message(self._identifier, dict(type="status", msg=f"Erro: {msg}", color="red"))
 
-                @self.sio.on('disconnect')
+                @self.sio.on('disconnect', namespace='/')
                 def on_disconnect():
                     self._logger.info("WS: Desconectado do servidor.")
                     self.streaming = False
@@ -191,8 +202,10 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     else: 
                         # Para comandos G-Code puros (G28, G0, etc)
                         self._printer.commands(cmd)
+                    
+                    self._logger.info(f"WS: Comando recebido: {data}")
 
-                @self.sio.on('start_video')
+                @self.sio.on('start_video', namespace='/')
                 def on_start_video(data):
                     self._logger.info("WS: EVENTO RECEBIDO! Servidor pediu vídeo.")
                     self.streaming = True
@@ -201,7 +214,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                         self.stream_thread.daemon = True
                         self.stream_thread.start()
 
-                @self.sio.on('stop_video')
+                @self.sio.on('stop_video', namespace='/')
                 def on_stop_video(data):
                     self._logger.info("WS: Servidor parou vídeo.")
                     self.streaming = False
