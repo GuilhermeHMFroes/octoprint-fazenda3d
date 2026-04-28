@@ -270,11 +270,22 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             }
             
             url_status = servidor_url.rstrip("/") + "/api/status"
-            requests.post(url_status, json=payload, timeout=2) 
+            #requests.post(url_status, json=payload, timeout=2) 
+
+            resp_status = requests.post(url_status, json=payload, timeout=2)
+            
+            if resp_status.status_code == 401:
+                self._logger.error("Fazenda3D: Token recusado pelo servidor (401). Parando monitoramento.")
+                self._parar_tudo() # Função auxiliar para limpar a bagunça
+                return
             
             if not self._printer.is_printing() and not self._printer.is_paused():
                 url_fila = servidor_url.rstrip("/") + "/api/fila?token=" + token
-                resp = requests.get(url_fila, timeout=2)
+
+                # 2. Verificamos o GET da Fila
+                #resp = requests.get(url_fila, timeout=2)
+                resp_fila = requests.get(url_fila, timeout=2)
+
                 if resp.status_code == 200:
                     obj = resp.json()
                     if obj.get("novo_arquivo"):
