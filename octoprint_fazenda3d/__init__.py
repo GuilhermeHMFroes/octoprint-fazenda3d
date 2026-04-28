@@ -60,6 +60,10 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
             self._settings.save()
 
             self._logger.info(f"Configurações atualizadas via API. Nova URL: {url_nova}")
+
+            self._token_valido = True
+
+            self._logger.info(f"Self._token_valido setado para True.")
             
             # FORÇAR O RESET DO CLIENTE SOCKET
             # Isso fará o loop do _socket_worker sair do 'wait' ou do 'sleep' 
@@ -70,6 +74,8 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     self.sio = None # Forçamos a recriação do objeto no worker
                 except:
                     pass
+
+            self.connect_socket()
 
             # Garantir que o loop status (HTTP) também volte se tiver sido parado
             if self._timer is None:
