@@ -28,6 +28,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         super(Fazenda3DPlugin, self).__init__()
         self._timer = None
         self.sio = None
+        self._token_valido = True
         self.streaming = False
         self.stream_thread = None
         self._shutdown_signal = False 
@@ -104,7 +105,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
         # Pequeno delay inicial para garantir que settings carregaram
         time.sleep(2)
         
-        while not self._shutdown_signal:
+        while not self._shutdown_signal and self._token_valido:
             server_url = self._settings.get(["servidor_url"])
             
             # Se não tiver URL, espera um pouco e tenta ler de novo (caso o usuário tenha acabado de salvar)
@@ -113,8 +114,9 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 continue
 
             if self.sio is None:
-                self.sio = socketio.Client()
-                
+                #self.sio = socketio.Client()
+                self.sio = socketio.Client(reconnection=False)
+
                 # --- EVENTOS ---
                 @self.sio.on('connect', namespace='/')
                 def on_connect():
@@ -131,6 +133,7 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                 def on_server_error(data):
                     # O servidor te chutou porque o token é inválido
                     self._logger.error(f"WS: Erro de Autenticação: {data.get('message')}")
+                    self._token_valido = False
                     self.sio.disconnect() # Desconecta imediatamente
 
                 @self.sio.on('disconnect')
@@ -196,9 +199,15 @@ class Fazenda3DPlugin(octoprint.plugin.SettingsPlugin,
                     time.sleep(2)
                     
             except Exception as e:
+
+                if not self._token_valido:
+                    break
+
                 self._logger.warning(f"WS: Falha na conexão. Tentando em 30s. Erro: {e}")
                 self.streaming = False 
                 time.sleep(30)
+
+        self._logger.info("WS: Worker encerrado (Token inválido ou Shutdown).")
 
     def _video_stream_loop(self):
 
